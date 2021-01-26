@@ -250,3 +250,145 @@ public class CloneConstructorExample {
 }
 ```
 
+# 六. 继承
+## 访问权限
+
+java 有三个访问权限修饰符, private, protected, public. 未加修饰符表示包可见
+
+可以给 成员变量 和 成员方法 加上访问权限修饰符
+- 类可见(用 public 修饰)表示其它类可以用这个类创建实例对象。
+- 成员(包括变量和方法)可见表示其它类可以用这个类的实例对象访问到该成员；
+
+protected 用于修饰成员，表示在继承体系中成员对于子类可见，但是这个访问修饰符对于类没有意义(不加public就是包可见)。
+
+如果子类的方法重写了父类的方法，那么子类中该方法的访问级别不允许低于父类的访问级别。这是为了确保可以使用父类实例的地方都可以使用子类实例去代替，也就是确保满足里氏替换原则。
+
+## 抽象类与接口
+
+### 1. 抽象类
+
+抽象类和抽象方法都使用 abstract 关键字进行声明。如果一个类中包含抽象方法，那么这个类必须声明为抽象类。
+
+抽象类和普通类最大的区别是，抽象类不能被实例化，只能被继承。(但可以有默认实现)
+
+### 2. 接口
+
+接口是抽象类的延伸，在 Java 8 之前，它可以看成是一个完全抽象的类，也就是说它不能有任何的方法实现。
+
+从 Java 8 开始，接口也可以拥有默认的方法实现，这是因为不支持默认方法的接口的维护成本太高了。在 Java 8 之前，如果一个接口想要添加新的方法，那么要修改所有实现了该接口的类，让它们都实现新增的方法。
+
+接口的成员（字段 + 方法）默认都是 public 的，并且不允许定义为 private 或者 protected。从 Java 9 开始，允许将方法定义为 private，这样就能定义某些复用的代码又不会把方法暴露出去。
+
+==接口的字段默认都是 static 和 final 的。==
+
+## super
+
+- 访问父类的构造函数：可以使用 super() 函数访问父类的构造函数，从而委托父类完成一些初始化的工作。应该注意到，==子类一定会调用父类的构造函数来完成初始化工作==，一般是调用父类的默认构造函数，如果子类需要调用父类其它构造函数，那么就可以使用 super() 函数。
+- 访问父类的成员方法：如果子类重写了父类的某个方法，可以通过使用 super 关键字来引用父类的方法实现。
+
+## 重写与重载
+### 1. 重写 (Override)
+
+存在于继承体系中，指子类实现了一个与父类(接口)在方法声明上完全相同的一个方法。
+
+为了满足里式替换原则，重写有以下三个限制：
+1. 访问权限大于等于父类
+2. 返回类型是父类返回类型的子类
+3. 抛出的异常是父类抛出异常的子类
+
+在调用一个方法时，先从本类中查找看是否有对应的方法，如果没有再到父类中查看，看是否从父类继承来。否则就要对参数进行转型，转成父类之后看是否有对应的方法。总的来说，方法调用的优先级为：
+1. this.func(this)
+2. super.func(this)
+3. this.func(super)
+4. super.func(super)
+
+```java
+/*
+    A
+    |
+    B
+    |
+    C
+    |
+    D
+ */
+
+
+class A {
+
+    public void show(A obj) {
+        System.out.println("A.show(A)");
+    }
+
+    public void show(C obj) {
+        System.out.println("A.show(C)");
+    }
+}
+
+class B extends A {
+
+    @Override
+    public void show(A obj) {
+        System.out.println("B.show(A)");
+    }
+}
+
+class C extends B {
+}
+
+class D extends C {
+}
+```
+
+```java
+public static void main(String[] args) {
+
+    A a = new A();
+    B b = new B();
+    C c = new C();
+    D d = new D();
+
+    // 在 A 中存在 show(A obj)，直接调用
+    a.show(a); // A.show(A)
+    // 在 A 中不存在 show(B obj)，将 B 转型成其父类 A
+    a.show(b); // A.show(A)
+    // 在 B 中存在从 A 继承来的 show(C obj)，直接调用
+    b.show(c); // A.show(C)
+    // 在 B 中不存在 show(D obj)，但是存在从 A 继承来的 show(C obj)，将 D 转型成其父类 C
+    b.show(d); // A.show(C)
+
+    // 引用的还是 B 对象，所以 ba 和 b 的调用结果一样
+    A ba = new B();
+    ba.show(c); // A.show(C)
+    ba.show(d); // A.show(C)
+}
+```
+
+### 2. 重载 (Overload)
+
+存在于同一个类中，指一个方法与已经存在的方法名称上相同，但是参数类型、个数、顺序至少有一个不同。
+
+应该注意的是，返回值不同，其它都相同不算是重载。
+
+# 七. 反射
+每个类都有一个 Class 对象，包含了与类有关的信息。当编译一个新类时，会产生一个同名的 .class 文件，该文件内容保存着 Class 对象。
+
+类加载相当于 Class 对象的加载，类在第一次使用时才动态加载到 JVM 中。也可以使用 Class.forName("com.mysql.jdbc.Driver") 这种方式来控制类的加载，该方法会返回一个 Class 对象。
+
+反射可以提供运行时的类信息，并且这个类可以在运行时才加载进来，甚至在编译时期该类的 .class 不存在也可以加载进来。
+
+Class 和 java.lang.reflect 一起对反射提供了支持，java.lang.reflect 类库主要包含了以下三个类：
+
+- Field ：可以使用 get() 和 set() 方法读取和修改 Field 对象关联的字段；
+- Method ：可以使用 invoke() 方法调用与 Method 对象关联的方法；
+- Constructor ：可以用 Constructor 的 newInstance() 创建新的对象。
+
+# 八、异常
+
+Throwable 可以用来表示任何可以作为异常抛出的类，分为两种： Error 和 Exception。其中 Error 用来表示 JVM 无法处理的错误，Exception 分为两种：
+
+- 受检异常 ：需要用 try...catch... 语句捕获并进行处理(或抛出)，并且可以从异常中恢复；
+- 非受检异常 ：是程序运行时错误，例如除 0 会引发 Arithmetic Exception，此时程序崩溃并且无法恢复。
+
+![](https://camo.githubusercontent.com/8b2dfb0bfaeaf7ea0f0ae387ce2cbb0da1ec8d88a23929623cafc6bcbff044af/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f50506a77502e706e67)
+
