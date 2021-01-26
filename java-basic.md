@@ -392,3 +392,92 @@ Throwable 可以用来表示任何可以作为异常抛出的类，分为两种�
 
 ![](https://camo.githubusercontent.com/8b2dfb0bfaeaf7ea0f0ae387ce2cbb0da1ec8d88a23929623cafc6bcbff044af/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f50506a77502e706e67)
 
+# 九. 泛型
+
+泛型提供了编译时类型安全检测机制，该机制允许程序员在编译时检测到非法的类型。泛型的本质是参数化类型，也就是说所操作的数据类型被指定为一个参数。
+
+==Java 的泛型是伪泛型，这是因为 Java 在编译期间，所有的泛型信息都会被擦掉，这也就是通常所说类型擦除 。==
+
+泛型的好处就是在编译的时候能够检查类型安全，并且所有的强制转换都是自动和隐式的。
+
+## ？ 无界通配符
+
+集合里并没有继承关系, 意味着 List<子类> 不能作为参数传入需要List<父类> 的方法
+
+例子:
+```java
+static int countLegs (List<? extends Animal > animals ) {
+    int retVal = 0;
+    for ( Animal animal : animals )
+    {
+        retVal += animal.countLegs();
+    }
+    return retVal;
+}
+
+static int countLegs1 (List< Animal > animals ){
+    int retVal = 0;
+    for ( Animal animal : animals )
+    {
+        retVal += animal.countLegs();
+    }
+    return retVal;
+}
+
+public static void main(String[] args) {
+    List<Dog> dogs = new ArrayList<>();
+ 	// 不会报错
+    countLegs( dogs );
+	// 报错
+    countLegs1(dogs);
+}
+```
+
+错误信息:
+![](https://user-gold-cdn.xitu.io/2019/8/17/16c9df5681ee06f4?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+所以，对于不确定或者不关心实际要操作的类型，可以使用无限制通配符（尖括号里一个问号，即 <?> ），表示可以持有任何类型。像 countLegs 方法中，限定了上届，但是不关心具体类型是什么，所以对于传入的 Animal 的所有子类都可以支持，并且不会报错。而 countLegs1 就不行。
+
+## ？ 和 T 的区别
+
+![](https://user-gold-cdn.xitu.io/2019/8/17/16c9df5bd67315e6?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+？和 T 都表示不确定的类型，区别在于我们可以对 T 进行操作，但是对 ？ 不行，比如如下这种 ：
+
+```java
+// 可以
+T t = operate();
+
+// 不可以
+？ car = operate();
+
+```
+
+T 是一个 确定的 类型，通常用于==泛型类和泛型方法的定义==，？是一个 不确定 的类型，通常用于==泛型方法的调用代码和形参==，不能用于定义类和泛型方法。
+
+### 区别1：通过 T 来 确保 泛型参数的一致性
+
+```java
+// 通过 T 来 确保 泛型参数的一致性
+public <T extends Number> void
+test(List<T> dest, List<T> src)
+
+//通配符是 不确定的，所以这个方法不能保证两个 List 具有相同的元素类型
+public void
+test(List<? extends Number> dest, List<? extends Number> src)
+```
+
+### 区别2：类型参数可以多重限定而通配符不行
+
+![](https://user-gold-cdn.xitu.io/2019/8/17/16c9df6a3d2ed69d?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+使用 & 符号设定多重边界（Multi Bounds)，指定泛型类型 T 必须是 MultiLimitInterfaceA 和 MultiLimitInterfaceB 的共有子类型，此时变量 t 就具有了所有限定的方法和属性。对于通配符来说，因为它不是一个确定的类型，所以不能进行多重限定。
+
+### 区别3：通配符可以使用超类限定而类型参数不行
+
+类型参数 T 只具有 一种 类型限定方式：
+```java
+T extends A
+```
+而 ? 可以有两种
+
