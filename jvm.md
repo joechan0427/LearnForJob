@@ -962,7 +962,7 @@ JVM在进行GC时，并非每次都针对上面三个内存区域（新生代、
 - 整堆收集（`Full GC`）：收集整个java堆和方法区的垃圾收集
 - 年轻代GC（`Minor GC`）触发机制：
 当年轻代空间不足时，就会触发`Minor GC`，==这里的年轻代满指的是`Eden`区满，`Survivor`满不会引发GC==.(每次`Minor GC`会清理年轻代的内存，`Survivor`是被动GC，不会主动GC)
-因为Java对象大多都具备朝生夕灭的特性，所以`Monor GC` 非常频繁，一般回收速度也比较快，这一定义既清晰又利于理解。
+因为Java对象大多都具备朝生夕灭的特性，所以`Minor GC` 非常频繁，一般回收速度也比较快，这一定义既清晰又利于理解。
 `Minor GC` 会引发`STW`（`Stop the World`），暂停其他用户的线程，等垃圾回收结束，用户线程才恢复运行。
 
 - 老年代GC(`Major GC`/`Full GC`)触发机制
@@ -990,7 +990,7 @@ JVM在进行GC时，并非每次都针对上面三个内存区域（新生代、
         - 尽量避免程序中出现过多的大对象
     -   长期存活的对象分配到老年代
     - 动态对象年龄判断
-        - **如果Survivor区中相同年龄的所有对象大小的总和大于Survivor空间的一半，年龄大于或等于该年龄的对象可以直接进入到老�����代。无需等到MaxTenuringThreshold中要求的年龄**
+        - **如果Survivor区中相同年龄的所有对象大小的总和大于Survivor空间的一半，年龄大于或等于该年龄的对象可以直接进入到老年代。无需等到MaxTenuringThreshold中要求的年龄**
     - 空间分配担保
         - -XX: HandlePromotionFailure
 
@@ -1265,7 +1265,7 @@ public static void alloc(){
 
 **jdk7及以前**：
 
-- 通过一XX：PermSize来设置永久代初始分配空间。默认值是20.75M
+- 通过 -XX：PermSize来设置永久代初始分配空间。默认值是20.75M
 - -XX ： MaxPermSize来设定永久代最大可分配空间。32位机器默认是64M，64位机器模式是82M
 - 当JVM加载的类信息容量超过了这个值，会报异常OutOfMemoryError ： PermGen space
 
