@@ -44,7 +44,7 @@
 需要调用 System.arraycopy() 将 index+1 后面的元素都复制到 index 位置上，该操作的平均时间复杂度为 O(N)，删除最后一个为O(1), 可以看到 ArrayList 删除元素的代价是非常高的。
 
 4. 序列化
-ArrayList 基于数组实现，并且具有动态扩容特性，因此保存元素的数组不一定都会被使用，那么就没必要全部进行序列化。
+ArrayList 基于数组实现，并且具有动态扩容特性，因此==保存元素的数组不一定都会被使用==，那么就没必要全部进行序列化。
 保存元素的数组 elementData 使用 transient 修饰，该关键字声明数组默认不会被序列化。
 ArrayList 实现了 writeObject() 和 readObject() 来控制只序列化数组中有元素填充那部分内容。
 序列化时需要使用 ObjectOutputStream 的 writeObject() 将对象转换为字节流并输出。而 writeObject() 方法在==传入的对象(ArrayList)存在 writeObject() 的时候会去反射调用该对象的 writeObject() 来实现序列化==。反序列化使用的是 ObjectInputStream 的 readObject() 方法，原理类似。
