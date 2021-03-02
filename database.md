@@ -210,7 +210,7 @@ MySQL 的基本存储结构是页(==16KB==)
     - ref(多表join, 对于前面的每一行, 在当前能找到多行, 可用于 = 或 <=> (与null值比较, 相当于 is null) )
     - range(范围查找, 常见于 <=, between, like, in)
     - index(索引全部扫描, 如果使用了覆盖索引, 在extra中会显示 Using index)
-    - all(全表扫描
+    - all(全表扫描)
 2. rows
 **估算**需要扫描的条数, 越小越好
 3. extra
@@ -247,3 +247,234 @@ update student A set A.age='19' where A.name='张三';
 - 先查询到张三这一条数据，如果有缓存，也是会用到缓存。
 - 然后拿到查询的语句，把 age 改为19，然后调用引擎API接口，写入这一行数据，InnoDB引擎把数据保存在内存中，同时记录redo log，此时redo log进入prepare状态，然后告诉执行器，执行完成了，随时可以提交。
 - 执行器收到通知后记录binlog，然后调用引擎接口，提交redo log 为提交状态。
+
+# Redis
+## 为什么使用Redis
+速度快，完全基于内存，使用C语言实现，网络层使用epoll解决高并发问题，单线程模型避免了不必要的上下文切换及竞争条件；
+
+​与传统数据库不同的是 Redis 的数据是存在内存中的，所以读写速度非常快，因此 redis 被广泛应用于缓存方向，每秒可以处理超过 10万次读写操作，是已知性能最快的Key-Value DB。另外，Redis 也经常用来做分布式锁。除此之外，Redis 支持事务 、持久化、LUA脚本、LRU驱动事件、多种集群方案。
+
+## redis与memcached
+| redis | memcached |
+| - | -|
+|内存高速数据库|	高性能分布式内存缓存数据库，可缓存图片、视频|
+支持hash、list、set、zset、string结构 |	只支持key-value结构
+将大部分数据放到内存 |	全部数据放到内存中
+支持持久化、主从复制备份 |不支持数据持久化及数据备份
+数据丢失可通过AOF恢复|挂掉后，数据不可恢复
+
+## redis 应用场景202322
+1. 计数器
+使用 incr, decr 指令(原子操作)
+2. 会话缓存
+​可以使用 Redis 来统一存储多台应用服务器的会话信息。当应用服务器不再存储用户的会话信息，也就不再具有状态，一个用户可以请求任意一个应用服务器，从而更容易实现高可用性以及可伸缩性。
+
+## Redis 单线程模型详解
+Redis 通过IO 多路复用程序 来监听来自客户端的大量连接（或者说是监听多个 socket），它会将感兴趣的事件及类型(读、写）注册到内核中并监听每个事件是否发生。
+
+这样的好处非常明显： I/O 多路复用技术的使用让 Redis 不需要额外创建多余的线程来监听客户端的大量连接，降低了资源的消耗（和 NIO 中的 Selector 组件很像）。
+
+> Redis 基于 Reactor 模式开发了自己的网络事件处理器：这个处理器被称为文件事件处理器（file event handler）。文件事件处理器使用 I/O 多路复用（multiplexing）程序来同时监听多个套接字，并根据 套接字目前执行的任务来为套接字关联不同的事件处理器。
+当被监听的套接字准备好执行连接应答（accept）、读取（read）、写入（write）、关 闭（close）等操作时，与操作相对应的文件事件就会产生，这时文件事件处理器就会调用套接字之前关联好的事件处理器来处理这些事件。
+虽然文件事件处理器以单线程方式运行，但通过使用 I/O 多路复用程序来监听多个套接字，文件事件处理器既实现了高性能的网络通信模型，又可以很好地与 Redis 服务器中其他同样以单线程方式运行的模块进行对接，这保持了 Redis 内部单线程设计的简单性。
+
+![](https://snailclimb.gitee.io/javaguide/docs/database/Redis/images/redis-all/redis%E4%BA%8B%E4%BB%B6%E5%A4%84%E7%90%86%E5%99%A8.png)
+
+## redis 为什么单线程
+1. 单线程编程容易并且更容易维护；
+2. Redis 的性能瓶颈不再 CPU ，主要在内存和网络；
+3. 多线程就会存在死锁、线程上下文切换等问题，甚至会影响性能。
+
+## Redis6.0 之后为何引入了多线程？
+Redis6.0 引入多线程主要是为了提高网络 IO 读写性能，因为这个算是 Redis 中的一个性能瓶颈（Redis 的瓶颈主要受限于内存和网络）。
+
+虽然，Redis6.0 引入了多线程，但是 Redis 的多线程只是在网络数据的读写这类耗时操作上使用了， 执行命令仍然是单线程顺序执行。
+
+## Redis 给缓存数据设置过期时间有啥用？
+因为内存是有限的，如果缓存中的所有数据都是一直保存的话，分分钟直接Out of memory。
+很多时候，我们的业务场景就是需要某个数据只在某一时间段内存在，比如我们的短信验证码可能只在1分钟内有效，用户登录的 token 可能只在 1 天内有效。
+
+## Redis是如何判断数据是否过期的呢？
+Redis 通过一个叫做过期字典（可以看作是hash表）来保存数据过期的时间。过期字典的键指向Redis数据库中的某个key(键)，过期字典的值是一个long long类型的整数，这个整数保存了key所指向的数据库键的过期时间（毫秒精度的UNIX时间戳）。
+![](https://snailclimb.gitee.io/javaguide/docs/database/Redis/images/redis-all/redis%E8%BF%87%E6%9C%9F%E6%97%B6%E9%97%B4.png)
+
+## 过期的数据的删除策略了解么？
+1. **惰性删除** ：只会在取出key的时候才对数据进行过期检查。这样对CPU最友好，但是可能会造成太多过期 key 没有被删除。
+2. **定期删除** ： 每隔一段时间抽取一批 key 执行删除过期key操作。并且，Redis 底层会通过限制删除操作执行的时长和频率来减少删除操作对CPU时间的影响。
+
+Redis 采用的是 定期删除+惰性/懒汉式删除
+
+## Redis 内存淘汰机制了解么？
+Redis 提供 6 种数据淘汰策略：
+1. volatile-lru（least recently used）：从已设置过期时间的数据集（server.db[i].expires）中挑选最近最少使用的数据淘汰
+2. volatile-ttl：从已设置过期时间的数据集（server.db[i].expires）中挑选将要过期的数据淘汰
+3. volatile-random：从已设置过期时间的数据集（server.db[i].expires）中任意选择数据淘汰
+4. allkeys-lru（least recently used）：当内存不足以容纳新写入数据时，在键空间中，移除最近最少使用的 key（这个是最常用的）
+5. allkeys-random：从数据集（server.db[i].dict）中任意选择数据淘汰
+6. no-eviction：禁止驱逐数据，也就是说当内存不足以容纳新写入数据时，新写入操作会报错。这个应该没人使用吧！
+7. volatile-lfu（least frequently used）：从已设置过期时间的数据集(server.db[i].expires)中挑选最不经常使用的数据淘汰
+8. allkeys-lfu（least frequently used）：当内存不足以容纳新写入数据时，在键空间中，移除最不经常使用的 key
+
+## Redis 持久化机制
+Redis 的一种持久化方式叫快照（snapshotting，RDB），另一种方式是只追加文件（append-only file, AOF）
+
+## 缓存穿透
+缓存穿透说简单点就是大量请求的 key 根本不存在于缓存中，导致请求直接到了数据库上，根本没有经过缓存这一层。举个例子：某个黑客故意制造我们缓存中不存在的 key 发起大量请求，导致大量请求落到数据库。
+### 解决方法
+0. 接口层增加校验，如用户鉴权校验，id做基础校验，id<=0的直接拦截；
+1. 缓存无效key
+2. 布隆过滤器
+
+## 缓存雪崩
+缓存在同一时间大面积的失效，后面的请求都直接落到了数据库上，造成数据库短时间内承受大量请求。 
+### 解决方法
+1. 缓存不过期
+2. 过期时间不相同
+3. 加锁
+
+## 缓存击穿
+大量并发请求一个过期缓存, 导致此时缓存没有命中, 直接大量并发压垮数据库
+### 解决方法
+1. 热点缓存不过期
+2. 加锁
+
+## 跳表
+==跳表增删查的平均时间复杂度为O(logn)==
+### 跳表的性质
+- 由多层组成，最底层为第1层，次底层为第2层，以此类推。层数不会超过一个固定的最大值Lmax(32)。
+- 每层都是一个有头节点的有序链表，第1层的链表包含跳表中的所有元素。
+- 如果某个元素在第k层出现，那么在第1~k-1层也必定都会出现，但会按一定的概率p(0.25)在第k+1层出现。
+
+第k层可以视为第k-1级索引，用来加速查找。为了避免占用空间过多，第1层之上都不存储实际数据，只有指针（包含指向同层下一个元素的指针与同一个元素下层的指针）。
+
+![](https://upload-images.jianshu.io/upload_images/195230-c5c055a5ab1de6c5.png?imageMogr2/auto-orient/strip|imageView2/2/w/1200/format/webp)
+
+### 插入元素
+1. 按照前面讲过的查找流程，找到合适的插入位置。注意zset允许分数score相同，这时会根据节点数据obj的字典序来排序。
+2. 调用zslRandomLevel()方法，随机出要插入的节点的层数。
+3. 调用zslCreateNode()方法，根据层数level、分数score和数据obj创建出新节点。
+4. 每层遍历，修改新节点以及其前后节点的前向指针forward和跳跃长度span，也要更新最底层的后向指针backward。
+
+```c
+int randomizeLevel(double p, int lmax) {
+    int level = 1;
+    Random random = new Random();
+    while (random.nextDouble() < p && level < lmax) {
+        level++;
+    }
+    return level;
+}
+```
+### zset (跳表+dict)
+dict 的 key 是元素, value是分数
+
+下图示出一个length=3，level=5的zskiplist。
+![](https://upload-images.jianshu.io/upload_images/195230-8bb35614a101d7cf.png?imageMogr2/auto-orient/strip|imageView2/2/w/1200/format/webp)
+
+可见，zskiplist的第1层是个双向链表，其他层仍然是单向链表，这样做是为了方便可能的逆向获取数据的需求。
+
+另外，==节点中还会保存前向指针跳过的节点数span==，这是因为zset本身支持基于排名的操作，如zrevrank指令（由数据查询排名）、zrevrange指令（由排名范围查询数据）等。如果有span值的话，就可以方便地在查找过程中累积出排名了。
+
+#### 为什么使用跳表
+1. zset经常使用ZRANGE或ZREVRANGE操作，此时红黑树和平衡树并不能支持顺序遍历
+2. 便于编写, 红黑树和平衡树需要旋转来保持平衡
+
+### ziplist (压缩链表)
+zset 在数据量比较小的情况，会使用 ziplist 来作为数据结构
+ziplist 是一个连续的内存空间，设计上遵循着比较多的规矩，这种结构并不擅长更新操作。所以sortedset 、hash 都是在数据量小的情况使用这种结构。
+#### 什么是ziplist
+ziplist 是为了存储效率提供的一种经过特殊编码的双向链表。它用于存储字符串和整型，其中整型用二进制来进行编码，它能以O(1)的时间复杂度在表的两端提供push和pop操作。
+#### 内存结构
+- zlbytes：32bit 表示ziplist占用的字节总数，其中包含自己本身占用的4个字节。
+- zltail：32bit 表示ziplist 最后一个entry 距离列表起始地址有多少个字节。它的存在意味可以很方便地找到最后一项，而不需要遍历整个列表，并且可以快速的进行pop和push操作。
+- zllen：16bit 表示entry的个数，zllen只有16bit 意味最大存储为216-1。如果entry的个数小于等于216-2，该值表示entry的个数。如果超过的话，zllen 所有的bit 都为1，那么如果需要求出entry的个数，就只能遍历整个列表了（我们可以从ziplistLen 这个API就可以看出来）。
+- entry :表示真正存放数据的数据项。
+    - prevlen :表示前一个数据项的字节总数，为了让ziplist能够从后向前遍历（从后一项的位置，只需向前偏移prevlen个字节，就找到了前一项。这里也就体现前面说的它像个单向链表的特性。prevlen这个字段采用的是变长编码。
+    - encoding：表示当前数据项所保存数据的类型以及长度。也是采用变长编码。最前的2个字节决定存储是字符串类型还是整型，如果都为11的话表示为不同长度的整型，其他情况为字符串类型。
+
+## redis 集群
+![](https://static001.infoq.cn/resource/image/f7/7c/f70609a78f2429832cec2ecf54707d7c.png)
+
+以上图片，蓝色的为 redis 节点，这里是指 master 节点，一个 master 节点可以配置多个 slave。绿色为客户端，可以理解为我们的应用。
+
+### 数据分片
+#### 数据分片算法
+##### 顺序分布
+顺序分布假设每个节点最多存33个数字，那么此时需要4个节点，节点1存数字1 ~ 33，节点2存数字34 ~ 66，节点3存数字67 ~ 99，节点4存数字100.
+**优点**:可支持顺序访问,所有的Hash分布算法都不支持顺序访问。
+**缺点**：均匀性不够，数据分散度不够。
+##### 哈希分布
+1. **普通哈希**
+将 key 做哈希后取余
+**缺点**: 稳定性太差, 新增节点数据做很多偏移
+2. **一致性哈希**
+**原理:**
+> 1.将整个哈希值空间组织成一个虚拟的圆环，如假设某哈希函数H的值空间为0-2^32-1（即哈希值是一个32位无符号整形），整个哈希空间环就是下图中的黑色圆环
+2.对每个服务器的唯一识别标志（IP或者主机名）求hash值，将得到的值放入第一步的圆环中对应的位置。如下图的node1 node2 node3 node4
+3.对要保存的数据的key求hash值，将得到的值落入圆环中，就是下图的黄色圆圈，然后在圆环中顺时针找到最近的node（服务器的唯一识别标志（IP或者主机名）求hash值落在圆环中所在的点），该数据就存储在该node中
+
+![](https://img-blog.csdn.net/2018080720553729?watermark/2/text/aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2p5MDIyNjg4Nzk=/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70)
+
+**伸缩影响**:
+> 1.挂了一台服务器：比如上图中，node2挂了，只会影响node4节点（Node2顺时针往下走第一个节点），node2的数据会全部迁移到node4节点上。其余节点上的数据不用迁移。
+2.如果多加一台服务器： 比如上图中，在node4和node3之间加入node5，node3（node5顺时针往下走第一个节点）中的数据会有一部分符合要求的被迁移到Node5上。
+
+**缺点**: 稳定性不足, 但节点较小的时候, 可能数据倾斜严重
+
+3. **虚拟槽分区 hash slot (redis集群采用)**
+![](https://img-blog.csdn.net/20180807210508967?watermark/2/text/aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2p5MDIyNjg4Nzk=/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70)
+
+**原理**:
+> 1.redis cluster共有16384（0 ~ 16383）个hash槽，分在集群不同的节点上。比如下图中，0 ~ 3276范围的槽在node1上，3277 ~ 6553范围的槽在node2上，以此类推。
+2.对key做crc16(key)算出的值再对16383取余，最终得到的结果就是该key在哪个槽上。
+3.集群维护了槽和节点的对应关系，通过第二步得到Key在哪个槽上就能知道key在哪个集器上
+
+
+### 扩容集群
+![](https://user-gold-cdn.xitu.io/2019/5/24/16aea012c36d5555?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+1. 首先启动一个新节点 M4
+2. 执行 cluster meet 命令, 将 M4 加入集群
+3. 发送 cluster setslot {slot} importing {M4} 操作
+4. 其他节点 cluster setslot {slot} migrating {M} 操作
+5. 其他节点统计属于要迁移的 slot 的键值, 然后把键值通过 pipeline 迁移到目标节点
+6. 通知其他节点更新 slot 映射, slot 已发生迁移
+
+### 收缩集群
+![](https://user-gold-cdn.xitu.io/2019/5/24/16aea012c352cecc?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+1. 首先需要确认下线节点是否有负责的槽，如果是，需要把槽迁移到其他节点，保证节点下线后整个集群槽节点映射的完整性。
+2. 当下线节点不再负责槽或者本身是从节点时，就可以通知集群内其他节点忘记下线节点，当所有的节点忘记改节点后可以正常关闭。
+
+### 客户端
+![](https://user-gold-cdn.xitu.io/2019/5/24/16aea013652e421b?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+1. 客户端根据本地 slot 缓存发送命令到源节点，如果存在键对应则直接执行并返回结果给客户端。
+2. 如果节点返回 MOVED 错误(slot 已迁移完毕)，==更新本地(客户端)的 slot 到 Redis 节点的映射关系==，然后重新发起请求。
+3. 如果数据正在迁移中，节点会回复 ASK 重定向异常。格式如下: ( error ) ASK { slot } { targetIP } : {targetPort}
+客户端从 ASK 重定向异常提取出目标节点信息，发送 asking 命令到目标节点打开客户端连接标识，再执行键命令。
+
+### 非阻塞迁移
+![](https://static001.infoq.cn/resource/image/99/7c/991fb59e0d86c5ba89f9e339fc2cd77c.png)
+![](https://static001.infoq.cn/resource/image/da/b5/da87c0434eac7fe9c1000010405373b5.png)
+1. 如果一个槽被设置为 MIGRATING 状态时，原本持有该槽的节点会继续接受关于这个槽的命令请求，但==只有当键存在于该节点时，节点才会处理这个请求==。如果命令所使用的键不存在于该节点，那么节点将向客户端返回一个 ASK 转向（redirection）错误，告知客户端，要将命令请求发送到槽的迁移目标节点。
+2. 如果一个槽被设置为 IMPORTING 状态时，节点仅在接收到 ASKING 命令之后，才会接受关于这个槽的命令请求。如果客户端向节点发送该槽的数据请求，命令为非 ASKING 时，那么节点会使用 MOVED 转向错误将命令请求转向至真正负责处理这个槽的节点。
+
+### 节点内部结构
+![](https://static001.infoq.cn/resource/image/85/f8/85e4980fcd0bc748b3514f0afb8bf7f8.png)
+![](https://static001.infoq.cn/resource/image/b9/c8/b9a5179a680328b8198cfa0dfbc80fc8.png)
+![](https://static001.infoq.cn/resource/image/87/c0/874f4453b4ef3522683633e1eb06a3c0.png)
+![](https://static001.infoq.cn/resource/image/4c/88/4cad01e201938072524dfe7927da5888.png)
+
+### 集群响应客户端操作流程
+1. 检查 key 所在的 slot 是否属于当前节点
+    1. 计算 crc16(key) % 16384 得到 slot
+    2. 查询 clusterState.slots 负责的节点并与 myself 指针比较
+2. 若不属于, 返回 MOVED 重定向
+3. 若属于
+    1. key 存在, 响应请求 (不管是否在迁移)
+    2. key 不存在
+        1. slot 处于 migrating(迁出) 状态, 返回 ASK 
+        2. slot 处于 importing(迁入) 状态
+            1. 请求带有 ASKING 标志, 响应请求
+            2. 不带有 ASKING 标志, 返回 MOVED
+
+### 故障转移(选举制度)

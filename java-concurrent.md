@@ -299,6 +299,7 @@ Thread 类里
 ThreadLocal.ThreadLocalMap threadLocals = null;
 ```
 Thread 类中有一个 ThreadLocalMap 类型的变量, 可以理解为一个 HashMap , key 为 threadlocal 实例, 而value 则为 实际要保存的对象
+==ThreadLocalmap 使用开放地址法(中的线性探测法)来解决哈希冲突, 因为在ThreadLocalMap中的散列值分散得十分均匀，很少会出现冲突。并且ThreadLocalMap经常需要清除无用的对象，使用纯数组更加方便。==
 
 ![](https://snailclimb.gitee.io/javaguide/docs/java/multi-thread/images/threadlocal%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84.png)
 
