@@ -1,12 +1,18 @@
-
+# OSI (open system interconnection reference model) 七层协议
+1. 物理层
+发送电信号 0101
+2. 数据链路层
+将电信号分组, 一组电信号称为一帧, 通过 mac 地址找到同一局域网内的机器
+3. 网络层
+为了找到不同局域网的机器, 提供了 ip 地址, 并提供 ARP (Address Resolution Protocol) 将 ip 地址解析为 mac 地址. 如果要找到跨局域网的机器, 则本计算机通过子网掩码判断出对方 ip 不在同个局域网, 因此将数据先发送给网关
+4. 传输层
+找到了对方的机器, 此时为进程提供通信服务, 因为有多个端口. 该层有 TCP 和 UDP 两种协议
+5. 应用层
+http, dns
 
 
 # 网络层
-## 常见应用端口及协议
-| 应用程序 | FTP | TFTP | TELNET | SMTP	| DNS | HTTP | SSH | MYSQL |
-| - | - | - | - | - | - | - | - | - |
-| 熟知端口 | 21,20 | 69 | 23 | 25 | 53	| 80 | 22 | 3306
-|传输层协议	|TCP|	UDP|	TCP|	TCP|	UDP|	TCP|	TCP|	TCP
+
 ## TCP (transmission control protocol)
 > TCP把连接作为最基本的对象，每一条TCP连接都有两个端点，这种端点我们叫作套接字（socket），它的定义为端口号拼接到IP地址即构成了套接字，例如，若IP地址为192.3.4.16 而端口号为80，那么得到的套接字为192.3.4.16:80。
 
@@ -106,7 +112,37 @@ tcp 接收双方都维护一个滑动窗口, 接收方通过 tcp 首部的窗口
 如果某次连续收到三个同样的确认报文, 则可确认下一个报文丢失, 此时立即执行快重传, 传输下一个报文.
 同时, 由于只是丢失个别报文, 并非网络拥塞, 所以执行快恢复, 将 ssthrech = cwnd/2, cwnd = ssthrech, 即马上进入拥塞避免
 
+### TCP "粘包问题"
+1. 其实 TCP 协议是面向字节流的, 本身不存在包的概念, 并且 TCP 已经明确可能将用户数据拆分
+2. 所谓粘包问题
+    ![](https://user-gold-cdn.xitu.io/2020/3/7/170b2877abc959d3?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+    1. 发送端应用层写入数据小于套接字缓冲区大小
+    ![](https://user-gold-cdn.xitu.io/2020/3/7/170b28766f2164b5?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+    2. 发送端应用层写入数据大于套接字缓冲区大小, 导致拆包
+    3. 接收端不及时读取套接字缓冲区, 导致粘包
+3. 解决方法(应该在应用层解决)
+    1. 约定以特殊的字符作为分割, 如`\r\n`
+    2. 接收固定长度的消息作为一个包
+    3. 分为包头和包体, 包头指示该包长度
+## UDP (User Datagram Protocol)
+![](https://pic1.zhimg.com/v2-fa0fa846a1c792845356f590a25f5574_b.png)
+### 伪首部
+根据IP报文首部获得8字节的源地址+目的地址、2字节的0字段+UDP协议字段、2字节的数据长度，得到12字节伪首部
+发送方将UDP伪首部、首部、数据每16位一组进行二进制反码求和，再将求和结果求反码，填入校验和字段后伪首部消失
+接收方收到UDP报文后，生成伪首部，将伪首部、首部、数据每16位一组进行二进制反码求和，若求和结果全为1则无差错传输，否则丢弃
+### 与 tcp 的区别
+1. udp 面向报文, 无连接, 对于应用层的下发的报文既不拆分, 也不合并, 而 tcp 面向连接
+2. udp 不保证报文到达顺序
+3. udp 不提供可靠传输 (超时重传, 流量控制, 拥塞控制)
+4. udp 结构简单, 包的头部只有8个字节, 相比于 tcp 的 20 个字节开销较小
+
+
 # 应用层
+## 常见应用端口及协议
+| 应用程序 | FTP | TFTP | TELNET | SMTP	| DNS | HTTP | SSH | MYSQL |
+| - | - | - | - | - | - | - | - | - |
+| 熟知端口 | 21,20 | 69 | 23 | 25 | 53	| 80 | 22 | 3306
+| 传输层协议	| TCP | UDP | TCP | TCP | UDP | TCP | TCP | TCP
 ## HTTP
 ![](https://img2018.cnblogs.com/blog/885859/201907/885859-20190724173242717-440362909.png)
 
@@ -116,6 +152,15 @@ tcp 接收双方都维护一个滑动窗口, 接收方通过 tcp 首部的窗口
 3. POST
 4. PUT
 5. DELETE
+
+#### GET 与 POST 区别
+其实并无实质区别, 只是==报文格式不同==
+1. 报文头部方法名不同
+2. 参数位置不同, GET 在 url, POST 在 body
+3. 安全性而言, 二者其实都不安全, 因为 http 是明文传输, 安全应该考虑 https
+4. GET 方法长度限制. http 并无对 header 和 body 有长度限制, 但是浏览器和服务器可能会有限制
+5. POST 方法并非一定产生两个 tcp 数据包
+6. GET 方法可以被浏览器缓存(也可以做书签), POST 方法不可以, 因为非幂等(每次执行效果相同)
 
 ### HTTP 响应码
 100: continue. 继续, 客户端应该继续其请求
@@ -128,6 +173,140 @@ tcp 接收双方都维护一个滑动窗口, 接收方通过 tcp 首部的窗口
 401: unauthorized. 未授权
 403: forbidden. 请求被拒绝
 404: not found
+409: conflict. 请求资源与资源当前状态冲突
+410: gone. 服务器某个资源已永久删除
+416: Requested Range Not Satisfiable. 范围请求越界
 500: internal server error. 服务端内部错误
 502: bad gateway. 网关或代理执行请求时, 收到服务端无效响应
 503: server unavailable. 服务端正在维护
+
+### HTTP优化方向
+影响一个 HTTP 请求的因素主要有两个: **带宽**和**延迟**
+1. 带宽: 现在的通讯技术带宽已经提升很快, 并且带宽也不是 HTTP 能改变的
+2. **延迟**:
+    1. 线头阻塞 (head-of-line blocking)
+    2. dns 查询: 可以利用 dns 缓存解决
+    3. 建立连接过程(三次握手, 四次挥手)
+
+#### HTTP 1.0 和 HTTP 1.1
+1. **缓存**
+在 HTTP1.0 主要使用头部的 if-modified-since, expire 作为缓存判断标准, 而 HTTP 加入 if-unmodified-since, if-match, if-unmatch
+2. **带宽优化**
+HTTP1.1 在头部加入 range 头域, 允许只请求资源的某个部分, 同时引入状态码 206(部分内容), 416(范围越界)
+3. **响应码**
+新增响应码, 如 206, 416, 409, 410
+4. **长连接**
+HTTP1.1 默认开启长连接(头部 connection : keep-alive), 即一个 tcp 连接可以传输多个 http 请求
+5. **host头处理**
+请求中强制要求加入 host, 否则报告 400 响应. 原因在于一个物理服务器可以有多台虚拟主机
+
+#### HTTP 2.0
+- **二进制格式传输**
+HTTP1 是基于文本, 由于文本的表现方式多样, 因此要做到健壮必须考虑多场景
+- **多路复用**
+- **头部压缩**
+![](https://st.imququ.com/i/webp/static/uploads/2015/10/hpack-header-compression.png.webp)
+    1. 浏览器和服务端维护一份相同的静态字典, 可用于 
+        1) 根据静态字典直接使用一个字符表示, 如上图中的2可以直接表示 :method GET 
+        2) 根据静态字典更新动态字典, 如上图中的 19 huffman("/resource"), 此时浏览器将 value 进行霍夫曼解码后, 将动态字典的 :path 值更新
+    2. 维护一份相同的动态字典(每个连接一份)
+- **服务端推送**
+能免去客户端发起请求, 如静态资源
+![](http://mmbiz.qpic.cn/mmbiz_png/cmOLumrNib1cfBOtIMQ6JfSibJdd6QkQribkZLpDyHlTbAGkEiazqLfjkTSfMgib2UlC0p3Yw0T3iaaHcvLjL22PZWPg/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+![](http://mmbiz.qpic.cn/mmbiz_png/cmOLumrNib1cfBOtIMQ6JfSibJdd6QkQribq79os9yK2JmEODZqRVBweS7uMP2WWz4Ij6Z1f9TuiaXANOozhwCWljw/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+
+#### HOL (head of line blocking)线头阻塞问题
+
+![](https://upload-images.jianshu.io/upload_images/6383319-0038959f76865b38.jpg?imageMogr2/auto-orient/strip|imageView2/2/w/550/format/webp)
+
+1. **http1.0**
+默认短连接, 导致连接无法复用, 每次请求都要经历三次握手和慢启动
+2. **http1.1**
+pipelining(流水线), 在一个 tcp 连接连续发送多个 http 请求, 但是仍然没有解决 hol, 因为响应遵循 FIFO, 因此如果请求 1 阻塞了, 后续请求也不会返回响应
+3. **http2.0**
+多路复用, 在应用层和传输层之间新增一个二进制分帧层
+![](https://www.zhoulujun.cn/uploadfile/net/2019/0118/20190118175213765118834.jpg)
+这样允许 http 在一次请求中发起多个请求与响应
+![](https://www.zhoulujun.cn/uploadfile/net/2019/0118/20190118175213461327914.png)
+一个 request 对应一个 steam id, 这样一个连接可以有多个 steam, 每个 steam frame 可以随机混杂在一起; 接收方可以根据 steam id 将frame 再归属到不同的 request
+![](https://www.zhoulujun.cn/uploadfile/net/2019/0118/20190118175213757020084.png)
+    ##### 为什么 HTTP1.x 时代不能使用多路复用
+    因为 http1.x 是基于文本协议, 他不会区分负载的资源. 如果我们尝试将其分包
+    ![](https://pic4.zhimg.com/80/v2-ab3d635cd31de6073cb5981c6a069b6f_720w.jpg)
+    那么他将把 css 解析成 js 文件的一部分
+==**只解决应用层的 hol**==
+因为 http2.0 依然基于 tcp 连接, 所有他不能解决 tcp 带来的 hol
+![](https://pic3.zhimg.com/80/v2-1e46e710eabe4ffc824c715c17c245a6_720w.jpg)
+如上图, 如果传输过程中, 2号 tcp 报文丢失, 1,3 正常到达, 由于 2 号报文丢失, 而 tcp 需要按照序号交付报文, 因此 3 号报文将被保存在缓冲区直到 2 号报文重传. 也就是说, **丢失的 2 号报文线头阻塞了 3号**
+
+4. **http3.0** 
+RUDP (reliable UDP)
+建立在应用层和传输层之间, 如 Google 开发的 QUIC(Quick UDP Internet Connection). 
+![](https://pic2.zhimg.com/80/v2-86bbaaa921547967e243e9d46ca22a31_720w.jpg)
+与 HTTP/2 的数据帧（DATA frames）非常相似，**QUIC 的流帧（STREAM frames）分别跟踪每个流的字节范围。**
+如果此时 2 号报文丢失, 1,3 号到达, 此时 QUIC 可以查看 steam1 的字节范围, 发现3号报文的steam1 与1号报文之间并无字节空隙, 因此可以直接交付; 而对于 steam2, 他发现一个缺口, 因此将其保留, 直到 2 号报文重传
+不过, 也有其他后果, **QUIC 在单个资源流中保留了顺序，但不再跨单个流（individual streams）进行排序。**, 比如当 1 号报文丢失, 浏览器可能先看到 2 号报文.
+
+#### HTTPS (HTTP over Securesocket Layer)
+HTTPS 并不是新协议，而是让 HTTP 先和 SSL（Secure Sockets Layer）通信，再由 SSL 和 TCP 通信，也就是说 HTTPS 使用了隧道进行通信。
+##### 加密
+1. **对称加密**
+![](https://camo.githubusercontent.com/6c294912997faa05a28d069a85582276f8885e1e5fd8cea3318239f2d2bb08ea/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f37666666613462382d623336642d343731662d616430632d6138386565373633626237362e706e67)
+优点: 运算快
+如 AES (advanced encryption standard)
+
+2. **非对称加密**
+![](https://camo.githubusercontent.com/8ebc0cef52df1490899222ffeb3fa231bc19a2f2eb8fb32dac0611af865ea577/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f33396363623239392d656539392d346464312d623862342d3266396563393439356362342e706e67)
+如 RSA, 利用了大数质因数分解困难
+
+3. **https 采用的加密**
+    1. 利用非对称加密, 获得加密算法的密钥
+    2. 通信使用 1 得到的密钥进行对称加密
+![](https://camo.githubusercontent.com/34cc60de23ad2228d3877e97ed1605fa9b858dda8610de5e3201144e3b35983a/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f486f772d48545450532d576f726b732e706e67)
+
+但是有可能被中间人攻击, 如 X 冒充 B, 给 A 发 X 的公钥, 这样 X 就能解密 A 发的密文
+
+##### 证书
+![](https://labuladong.github.io/algo/pictures/%E5%AF%86%E7%A0%81%E6%8A%80%E6%9C%AF/7.jpg)
+
+现在正规的浏览器, 大都自带预存了正规认证机构的证书(包括其公钥)
+
+### 重定向和转发
+**forward（转发)**：
+是服务器请求资源,服务器直接访问目标地址的URL,把那个URL的响应内容读取过来,然后把这些内容再发给浏览器.浏览器根本不知道服务器发送的内容从哪里来的,因为这个跳转过程实在服务器实现的，并不是在客户端实现的所以客户端并不知道这个跳转动作，所以它的地址栏还是原来的地址.
+**redirect（重定向）**：
+是服务端根据逻辑,发送一个状态码,告诉浏览器重新去请求那个地址.所以地址栏显示的是新的URL.
+
+==转发是服务器行为，重定向是客户端行为。==
+**区别**:
+1. url: 重定向改变, 转发不变
+2. 共享资源: 重定向不共享, 转发共享 request
+3. 效率: 重定向低于转发, 因为是两次 request
+
+**应用**:
+重定向: 用户注销时跳转回主页
+转发: 用户登录时转发到指定模块
+
+### cookie和session区别
+两者都是用于保存用户的会话信息
+1. cookie 保存在浏览器, session 保存在服务端
+2. cookie 不是很安全, 可能会有跨域攻击的危险
+
+session 失效时间:
+session本身有一个存活时间，在tomcat中默认的是30分钟，
+### websocket
+HTTP协议有一个的缺陷为：通信只能由客户端发起。在一些场景下，这种单向请求的特点，注定了如果服务器有连续的状态变化，客户端要获知就非常麻烦。我们只能使用轮询：每隔一段时候，就发出一个询问，了解服务器有没有新的信息。最典型的场景就是聊天室。
+轮询的效率低，非常浪费资源（因为必须不停连接，或者 HTTP 连接始终打开）
+
+相同点主要有：
+- 都是基于TCP的应用层协议；
+- 都使用Request/Response模型进行连接的建立；
+- 在连接的建立过程中对错误的处理方式相同，在这个阶段WS可能返回和HTTP相同的返回码；
+都可以在网络中传输数据。
+
+不同之处在于：
+- WS使用HTTP来建立连接，但是定义了一系列新的header域，这些域在HTTP中并不会使用；
+- WS的连接不能通过中间人来转发，它必须是一个直接连接；
+- WS连接建立之后，通信双方都可以在任何时刻向另一方发送数据；
+- WS连接建立之后，数据的传输使用帧来传递，不再需要Request消息；
+- WS的数据帧有序。

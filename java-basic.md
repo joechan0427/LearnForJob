@@ -295,6 +295,7 @@ protected 用于修饰成员，表示在继承体系中成员对于子类可见�
 1. 访问权限大于等于父类
 2. 返回类型是父类返回类型的子类
 3. 抛出的异常是父类抛出异常的子类
+4. 参数类型必须一致
 
 在调用一个方法时，先从本类中查找看是否有对应的方法，如果没有再到父类中查看，看是否从父类继承来。否则就要对参数进行转型，转成父类之后看是否有对应的方法。总的来说，方法调用的优先级为：
 1. this.func(this)
@@ -369,7 +370,17 @@ public static void main(String[] args) {
 存在于同一个类中，指一个方法与已经存在的方法名称上相同，但是参数类型、个数、顺序至少有一个不同。
 
 应该注意的是，返回值不同，其它都相同不算是重载。
+比如:
+```java
+//没有指定返回值
+fun(1,2);
 
+//此时有
+int fun(int a, int b);
+long fun(int a, int b);
+
+// 难以确认调用的方法
+```
 # 七. 反射
 每个类都有一个 Class 对象，包含了与类有关的信息。当编译一个新类时，会产生一个同名的 .class 文件，该文件内容保存着 Class 对象。
 
@@ -383,7 +394,7 @@ Class 和 java.lang.reflect 一起对反射提供了支持，java.lang.reflect �
 - Method ：可以使用 invoke() 方法调用与 Method 对象关联的方法；
 - Constructor ：可以用 Constructor 的 newInstance() 创建新的对象。
 
-# 八、异常
+# 八. 异常
 
 Throwable 可以用来表示任何可以作为异常抛出的类，分为两种： Error 和 Exception。其中 Error 用来表示 JVM 无法处理的错误，Exception 分为两种：
 

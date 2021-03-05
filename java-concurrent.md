@@ -30,6 +30,22 @@ public static void main(String[] args) throws ExecutionException, InterruptedExc
 - Java 不允许多重继承, 因此继承 Thread 类无法继承其他类, 而可以实现多个接口
 - 继承 Thread 类可能开销过大
 
+# 线程的生命周期和状态
+Java 线程在运行的生命周期中的指定时刻只可能处于下面 6 种不同状态的其中一个状态
+![](https://my-blog-to-use.oss-cn-beijing.aliyuncs.com/19-1-29/Java%E7%BA%BF%E7%A8%8B%E7%9A%84%E7%8A%B6%E6%80%81.png)
+![](https://my-blog-to-use.oss-cn-beijing.aliyuncs.com/19-1-29/Java+%E7%BA%BF%E7%A8%8B%E7%8A%B6%E6%80%81%E5%8F%98%E8%BF%81.png)
+
+## sleep
+不释放锁, Thread 的方法
+## wait 
+释放锁, object 的方法, 必须取得该 object 的锁才能执行
+## join
+阻塞到某个线程执行完成, 释放锁 (底层使用 wait), 
+```java
+t.join();//主要用于等待t线程运行结束
+```
+## yield
+让出当前 cpu, 可能又回到自己, 不释放锁
 # 中断
 一个线程执行完毕会自动退出, 如果执行过程发生异常也会提前结束
 
@@ -158,7 +174,7 @@ hashcode | gc 分代年龄 | 0 | 01
     > Condition是 JDK1.5 之后才有的，它具有很好的灵活性，比如可以实现多路通知功能也就是在一个Lock对象中可以创建多个Condition实例（即对象监视器），线程对象可以注册在指定的Condition中，从而可以有选择性的进行线程通知，在调度线程上更加灵活。 在使用notify()/notifyAll()方法进行通知时，被通知的线程是由 JVM 选择的，用ReentrantLock类结合Condition实例可以实现“选择性通知” ，这个功能非常重要，而且是 Condition 接口默认提供的。而synchronized关键字就相当于整个 Lock 对象中只有一个Condition实例，所有的线程都注册在它一个身上。如果执行notifyAll()方法的话就会通知所有处于等待状态的线程这样会造成很大的效率问题，而Condition实例的signalAll()方法 只会唤醒注册在该Condition实例中的所有等待线程。
 
 # volatile
-
+通过==缓存一致性协议实现==, 
 ## CPU 缓存模型
 CPU 缓存是为了解决 CPU 处理速度和内存处理速度不对等的问题。
 工作方式:
@@ -177,7 +193,7 @@ cache的依据, 局部性原理
 
 ## MESI (缓存一致性)
 ### chche 写方式
-1. write throuth(写通) : 每次 cpu 更新 cache, 立即更新到内存
+1. write throuth(写通) : 每次 cpu 更新 cache, 立即更新到内存 (==volatile 关键字使用==)
 2. write back(写回): 延迟更新
 
 无论是写通还是写回，在多核环境下都需要处理缓存cache一致性问题。为了保证缓存一致性，处理器又提供了写失效（write invalidate）和写更新（write update）两个操作来保证cache一致性。
@@ -247,9 +263,8 @@ void exeToCPUB(){
   }
 }
 ```
-假如 CPUA 一开始没有 value 的缓存, 却有 isfinish 的状态为 E 的cache. 此时对 value 的修改可能由 store buffer 处理. 而此时可能 CPUB 读到isFinish 是最新值, 而value
-则不是
-
+==指令重排序的原理==: 假如 CPUA 一开始没有 value 的缓存, 却有 isfinish 的状态为 E 的cache. 此时对 value 的修改可能由 store buffer 处理. 而此时可能 CPUB 读到isFinish 是最新值, 而value则不是 
+==volatile 原理==: lock 前缀的汇编指令会强制写入主存，也可避免前后指令的CPU重排序，并及时让其他核中的相应缓存行失效，从而利用MESI达到符合预期的效果.lock前缀的指令在功能上可以等价于内存屏障，可以让其立即刷入主存。
 #### invalid queue
 执行失效也不是一个简单的操作，它需要处理器去处理。另外，存储缓存（Store Buffers）并不是无穷大的，所以处理器有时需要等待失效确认的返回。这两个操作都会使得性能大幅降低。为了应付这种情况，引入了失效队列。它们的约定如下：
 - 对于收到的使失效信号, 应马上返回
