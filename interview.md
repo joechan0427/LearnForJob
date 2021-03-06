@@ -396,7 +396,21 @@ hashmap是线程不安全的，put时在多线程情况下，会形成环从而�
 # 数据库
 
 ## 慢SQL
-慢查询优化基本步骤
+阿里云 mysql 监控与报警 引擎监控 qps 
+### 慢 SQL 查找
+（1）设置开启：SET GLOBAL slow_query_log = 1;　　　#默认未开启，开启会影响性能，mysql重启会失效
+（2）查看是否开启：SHOW VARIABLES LIKE '%slow_query_log%';
+（3）设置阈值：SET GLOBAL long_query_time=3;
+（4）查看阈值：SHOW 【GLOBAL】 VARIABLES LIKE 'long_query_time%';　　#重连或新开一个会话才能看到修改值
+（5）通过修改配置文件my.cnf永久生效，在[mysqld]下配置：
+　　[mysqld]
+　　slow_query_log = 1;　　#开启
+　　slow_query_log_file=/var/lib/mysql/atguigu-slow.log　　　#慢日志地址，缺省文件名host_name-slow.log
+　　long_query_time=3;　　  #运行时间超过该值的SQL会被记录，默认值>10
+　　log_output=FILE　　　　　　　　　　　
+ (6) 慢 sql 语句将存放在 mysql 目录下
+
+### 慢查询优化基本步骤
 
 0. 先运行看看是否真的很慢，**注意设置SQL_NO_CACHE**
 
@@ -411,3 +425,14 @@ hashmap是线程不安全的，put时在多线程情况下，会形成环从而�
 5. 加索引时参照建索引的几大原则
 
 6. 观察结果，不符合预期继续从0分析
+
+### 具体例子
+有一个财务统计(统计各个学校学生的消费, 充值情况)的 sql 语句, 查询了 order 表(每天 2w 的订单), 并且用到了多表 join, 而且根据时间排序. 此时 explain 出来的结果是全表扫描, 而且用到了 filesort (没有利用索引排序). 
+解决方法: 加上联合索引 (区分度高的放前面, 如学校), 后续把财务查询单独新建表, 记录以天为单位, 配合定时任务, 每天把前一天的消费情况从 order 表 transfer 到新表
+
+> filesort 有两种排序方式
+    1. 对需要排序的记录生成 <sort_key,rowid> 的元数据进行排序，该元数据仅包含排序字段和rowid。排序完成后只有按字段排序的rowid，因此还需要通过rowid进行回表操作获取所需要的列的值，可能会导致大量的随机IO读消耗；
+    2. 对需要排序的记录生成 <sort_key,additional_fields> 的元数据，该元数据包含排序字段和需要返回的所有列。排序完后不需要回表，但是元数据要比第一种方法长得多，需要更多的空间用于排序。
+
+### sql 编写优化步骤:
+1. 避免所有字段都返回

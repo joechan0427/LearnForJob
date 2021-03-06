@@ -30,6 +30,9 @@ public static void main(String[] args) throws ExecutionException, InterruptedExc
 - Java 不允许多重继承, 因此继承 Thread 类无法继承其他类, 而可以实现多个接口
 - 继承 Thread 类可能开销过大
 
+# 线程池
+[美团线程池介绍](https://tech.meituan.com/2020/04/02/java-pooling-pratice-in-meituan.html)
+
 # 线程的生命周期和状态
 Java 线程在运行的生命周期中的指定时刻只可能处于下面 6 种不同状态的其中一个状态
 ![](https://my-blog-to-use.oss-cn-beijing.aliyuncs.com/19-1-29/Java%E7%BA%BF%E7%A8%8B%E7%9A%84%E7%8A%B6%E6%80%81.png)
@@ -69,6 +72,9 @@ t.join();//主要用于等待t线程运行结束
 ==注意: 尽量不要锁住 String, Integer 这类有缓存池的对象==
 
 ### 单例模式
+#### 多种实现
+1. 饿汉式(使用静态代码块或静态变量赋值的形式), 不会有线程安全问题, 因为在类加载阶段便已经创建对象
+2. 懒汉式(在实际运行时才加载)
 一个类只有一个实例对象, 如 Spring 中的 Service, Controller
 ```java
 class Singleton {
@@ -86,10 +92,26 @@ class Singleton {
     }
 }
 ```
-
 volatile 修饰的目的:
-1. 保证可见性, 保证每个线程得到的都是当前内存中的状态
-2. 保证有序性, 确保 jvm 不会指令重排, 以保证得到的 single 对象一定已经创建好了
+    1. 保证可见性, 保证每个线程得到的都是当前内存中的状态
+    2. 保证有序性, 确保 jvm 不会指令重排, 以保证得到的 single 对象一定已经创建好了
+
+3. 静态内部类模式
+```java
+public class SingleTon{
+  private SingleTon(){}
+ 
+  private static class SingleTonHoler{
+     private static SingleTon INSTANCE = new SingleTon();
+ }
+ 
+  public static SingleTon getInstance(){
+    return SingleTonHoler.INSTANCE;
+  }
+}
+```
+此时当 Singleton 被加载进虚拟机时并不会创建实例, 因为静态内部类并没有加载, 而只有当调用 getInstance() 时才会加载, 实现延迟加载
+当getInstance()方法被调用时，SingleTonHoler才在SingleTon的运行时常量池里，把符号引用替换为直接引用，这时静态对象INSTANCE也真正被创建
 
 ### Java 对象头
 对象头包含三部分
