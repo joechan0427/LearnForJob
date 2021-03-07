@@ -554,3 +554,35 @@ ziplist 是为了存储效率提供的一种经过特殊编码的双向链表。
             2. 不带有 ASKING 标志, 返回 MOVED
 
 ### 故障转移(选举制度)
+
+
+### 主从复制
+为了避免服务的单点故障，会把数据复制到多个副本放在不同的服务器上，且这些拥有数据副本的服务器可以用于处理客户端的读请求，扩展整体的性能
+**好处:**
+1. 数据冗余，实现数据的热备份
+2. 故障恢复，避免单点故障带来的服务不可用
+3. 读写分离，负载均衡。主节点负载读写，从节点负责读，提高服务器并发量
+4. 高可用基础，是哨兵机制和集群实现的基础
+#### 过程
+1. 建立连接
+    1. 从服务器执行 slaveOf 命令, 创建连向主服务器的套接字
+    2. 从服务器发送 ping 命令, 主服务器返回 pong, 否则从服务器将重连
+    3. 身份验证
+    4. 从服务器发送自己的监听窗口
+2. 数据同步 (PSYNC指令)
+分为**完整重同步(full resynchronization)** 和 **部分重同步(partial resynchronization)**
+**完整重同步**
+    1. 从服务器发送 psync 指令
+    2. 主服务器收到后, 执行 bgsave 指令, 并使用缓冲区记录这期间的写操作
+    3. 主服务器发送快照文件
+    4. 主服务器发送缓冲区里的写指令
+
+    ![](https://user-gold-cdn.xitu.io/2019/9/17/16d3ea1dbeb04fc9?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+**部分重同步**   
+用于处理从服务器断线后重连
+    - runid (replication id): 主服务器的 id
+    - offset: 复制偏移量, 主从都有, 表示发送(接收)的字节偏移
+    - replication backlog buffer: 复制积压缓冲区. 由 master 节点维护, 作用在于备份最近主服务器发送给从服务器的数据
+
+    当 slave 重新连接到 master, 会执行 `PSYNC <runid> <offset>` 发送旧的 master 的 id, 和已接收的 offset. ==但如果 master 缓冲区积压的数据不够, 或 runid 不一致, 将会进行完整重同步==
+    ![](https://user-gold-cdn.xitu.io/2019/9/17/16d3ea1dbf509bd1?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
