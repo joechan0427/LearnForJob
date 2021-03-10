@@ -212,8 +212,11 @@ defineClass（String name，byte[] b,int off,int len）	|把字节数组b中的�
 
 ![保护jar包](https://user-gold-cdn.xitu.io/2020/3/18/170ec8ddb41c5559?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
+**破坏双亲委派:**
 ![双亲委派流程](https://user-gold-cdn.xitu.io/2020/3/18/170ec8e47d7e861b?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
-
+或许你会想，我在自定义的类加载器里面强制加载自定义的java.lang.String类，不去通过调用父加载器不就好了吗?确实，这样是可行。但是，在JVM中，==判断一个对象是否是某个类型时，如果该对象的实际类型与待比较的类型的类加载器不同==，那么会返回false。
+**jdbc 破坏双亲委派:**
+**tomcat 破坏双亲委派**
 ### 5. 沙箱安全机制
 自定义String类，但是在加载自定义String类的时候回率先使用引导类加载器加载，而引导类加载器在加载过程中会先加载jdk自带的文件（rt.jar包中的java\lang\String.class）,报错信息说没有main方法就是因为加载的是rt.jar包中的String类。这样可以保证对java核心源代码的保护，这就是沙箱安全机制.
 

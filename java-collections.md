@@ -29,6 +29,10 @@
 - HashTable: 线程安全, 锁住整个实例对象(get 和 put 都是)
 - LinkedHashMap
 
+## priorityQueue
+[优先队列](https://www.cnblogs.com/luoxn28/p/5616101.html)
+应用:
+[迪杰斯特拉算法](https://zhuanlan.zhihu.com/p/40338107)
 # 二. 源码分析
 基于 jdk1.8
 
@@ -119,7 +123,8 @@ HashMap 允许插入键为 null 的键值对。但是因为无法调用 null 的
 
 ### 6. 链表转红黑树
 1.8开始, 当数组长度 capacity 大于 64 且链表长度大于 8 时, 会将链表转为红黑树
-
+#### 红黑树
+[红黑树](https://www.jianshu.com/p/e136ec79235c)
 ## ConcurrentHashMap
 ### 1. 存储结构
 **jdk1.7**
