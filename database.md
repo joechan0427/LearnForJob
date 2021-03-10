@@ -231,7 +231,8 @@ update student A set A.age='19' where A.name='张三';
 - 然后拿到查询的语句，把 age 改为19，然后调用引擎API接口，写入这一行数据，InnoDB引擎把数据保存在内存中，同时记录redo log，此时redo log进入prepare状态，然后告诉执行器，执行完成了，随时可以提交。
 - 执行器收到通知后记录binlog，然后调用引擎接口，提交redo log 为提交状态。
 
-
+### binlog
+binlog日志的格式？row格式的优点
 # 三大范式
 ## 第一范式
 属性不可再分
@@ -569,6 +570,8 @@ ziplist 是为了存储效率提供的一种经过特殊编码的双向链表。
         2. slot 处于 importing(迁入) 状态
             1. 请求带有 ASKING 标志, 响应请求
             2. 不带有 ASKING 标志, 返回 MOVED
+
+### 哨兵模式
 
 ### 故障转移(选举制度)
 

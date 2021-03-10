@@ -11,18 +11,18 @@ IO操作分2个步骤，请求IO和实际IO
 ==阻塞, 非阻塞是针对第一阶段而言
 同步, 非同步是针对第二阶段而言==
 
-1. 阻塞IO
+**1. 阻塞IO**
 ![](https://pic2.zhimg.com/80/e83d68da03da2e8c1568b4b4b630edfd_1440w.jpg?source=1940ef5c)
 
-2. 非阻塞IO
+**2. 非阻塞IO**
 ![](https://pic1.zhimg.com/80/4bc31cab27a9a732ab7d1ba9e674ed64_1440w.jpg?source=1940ef5c)
 进程把一个套接字设置成非阻塞是在通知内核，当所请求的I/O操作非得把本进程投入睡眠才能完成时，不要把进程投入睡眠，而是返回一个错误。==recvfrom总是立即返回==
 
-3. IO 多路复用
+**3. IO 多路复用**
 ![](https://pic2.zhimg.com/80/b1ec6a4f16844a27c175d5a6a94cd7f8_1440w.jpg?source=1940ef5c)
 I/O多路复用的函数也是阻塞的，但是其与以上两种还是有不同的，I/O多路复用是阻塞在select，epoll这样的系统调用之上，而没有阻塞在真正的I/O系统调用如recvfrom之上。
 
-4. 异步 IO
+**4. 异步 IO**
 ![](https://pic1.zhimg.com/80/5819fd0fdff2bd4fdc9652291aca1831_1440w.jpg?source=1940ef5c)
 工作机制是告知内核启动某个操作，并让内核在整个操作（包括将数据从内核拷贝到用户空间）完成后通知我们
 
