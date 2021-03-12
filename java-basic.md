@@ -505,4 +505,3 @@ T extends A
 
 1. List属于原始类型，它不会进行安全类型检查，也不存在泛型类型的限制g。
 2. List&lt;Object&gt;泛型为Object，它会进行安全类型检查，而且受泛型的限制。
-g
