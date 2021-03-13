@@ -124,9 +124,28 @@ eventpoll 对象也是文件系统的一员
 ![](https://cdn.nlark.com/yuque/0/2020/jpeg/181910/1608369221108-acb69d23-01d1-4a50-a177-84193b28effd.jpeg?)
 
 ##### epoll水平和边缘触发的区别?
+在进程执行 epoll_wait() 操作时, 水平触发和边缘触发对进程唤醒从策略不同
+1. 边缘触发 (edge trigger)
+    **读操作**
+    1. 在 buffer 由不可读变为可读的时候  
+    ![](http://blog.chinaunix.net/attachment/201406/3/28541347_14018059421VJj.png)
+    2. 在 buffer 有新数据到达时
+    ![](http://blog.chinaunix.net/attachment/201406/3/28541347_14018059521U1k.png)
 
-[io模型](https://www.jianshu.com/p/486b0965c296)
+    **写操作**
+    1. 在 buffer 由不可写变为可写的时候
+    2. 当有旧数据被发送走时，即buffer中待写的内容变少得时候
+    ![](http://blog.chinaunix.net/attachment/201406/3/28541347_1401805980jh7p.png)
 
+2. 水平触发 (level trigger)
+    LT模式下进程被唤醒（描述符就绪）的条件就简单多了，它包含==ET模式的所有条件==。此外，还有更普通的情况LT可以被唤醒，而ET则不理会，这也是我们需要注意的情况。
+
+    **读操作**
+    当buffer中有数据，且数据被读出一部分后buffer还不空的时候，即buffer中的内容减少的时候，LT模式返回读就绪。==只要还可读, 就返回读就绪==
+    ![](http://blog.chinaunix.net/attachment/201406/3/28541347_14018060158h95.png)
+    **写操作**
+    当buffer不满，又写了一部分数据后扔然不满的的时候，即由于写操作的速度大于发送速度造成buffer中的内容增多的时候，LT模式会返回就绪
+    ![](http://blog.chinaunix.net/attachment/201406/3/28541347_1401806029se68.png)
 
 # 文件描述符
 一个 Linux 进程可以打开成百上千个文件，为了表示和区分已经打开的文件，Linux 会给每个文件分配一个编号（一个 ID），这个编号就是一个整数，被称为**文件描述符**（File Descriptor）
