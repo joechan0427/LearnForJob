@@ -358,5 +358,206 @@ tryLock() 方法则是马上试图获取锁(即使该锁是公平锁), 不管拿
 lockInterruptibly() 则优先响应中断, 在请求锁时, 如果被interrupt, 则会要求处理异常
 
 # AQS
-[aqs](https://g.yuque.com/yulongsun/java/aqs)
+AQS 全称是 AbstractQueuedSynchronizer，是一个用来构建锁和同步器的框架，它维护了==一个共享资源 state 和一个 FIFO 的等待队列==（即上文中管程的入口等待队列），底层利用了 CAS 机制来保证操作的原子性
 
+![](https://cdn.nlark.com/yuque/0/2020/jpeg/181910/1603524624017-016776a3-2d50-40bb-bd2c-705ae3b171a0.jpeg)
+
+实现独占锁为例（即当前资源只能被一个线程占有），其实现原理如下：
+1. state 初始化 0，在多线程条件下，线程要执行临界区的代码，必须首先获取 state，
+2. 某个线程获取成功之后， state 加 1，其他线程再获取的话由于共享资源已被占用，所以会到 FIFO 等待队列去等待
+3. 等占有 state 的线程执行完临界区的代码释放资源( state 减 1)后，会唤醒 FIFO 中的下一个等待线程（head 中的下一个结点）去获取 state
+
+==state 由于是多线程共享变量，所以必须定义成 volatile==，以保证 state 的可见性, 同时虽然 volatile 能保证可见性，但不能保证原子性，所以 AQS 提供了对 state 的原子操作方法，保证了线程安全
+
+另外 AQS 中实现的 FIFO 队列（CLH 队列）其实是双向链表实现的，由 head, tail 节点表示，head 结点代表当前占用的线程，其他节点由于暂时获取不到锁所以依次排队等待锁释放, ==并且每个线程的等待状态 (waitStatus) 是在前一个节点中==
+ 
+同时, head 节点指向的线程永远是 null, 此时可以理解为当前线程正在工作, 并且此节点可以服务后续节点, 比如对于公平锁, 当前节点的前序节点是头节点, 则此节点有机会获取到资源, 则会自旋, 而如果前序节点非头节点, 则直接排队, 无须等待
+
+## 公平锁
+**加锁**
+1. t1 进入 tryacquire 判断是否获取到资源, 有两种可能可以获取到
+    1. 对于公平锁来说, 此时先判断没有队列, 并且 CAS 设置 state 为 1, CAS 设置当前锁的线程为 t1 都成功
+    2. 当前锁的线程是自己 t1, 由于是可重入锁, 直接把 state + 1
+    ![](https://pic4.zhimg.com/80/v2-83ecd54b32587f159b1fcd694b652eb3_1440w.jpg)
+    ```java
+    final void lock() {
+        acquire(1);
+    }
+
+    public final void acquire(int arg) {
+        if (!tryAcquire(arg) &&
+            acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+            selfInterrupt();
+    }
+
+    protected final boolean tryAcquire(int acquires) {
+        final Thread current = Thread.currentThread();
+        //获取状态量
+        int c = getState();
+        if (c == 0) {
+            if (!hasQueuedPredecessors() &&//判断是否需要排队
+                compareAndSetState(0, acquires))//CAS判断 {
+                setExclusiveOwnerThread(current);//设置当前锁的线程
+                return true;
+            }
+        }
+        else if (current == getExclusiveOwnerThread()) {//可重入锁
+            int nextc = c + acquires;
+            if (nextc < 0)//避免整数溢出
+                throw new Error("Maximum lock count exceeded");
+            setState(nextc);
+            return true;
+        }
+        return false;
+    }
+
+    //判断自己要不要排队
+    public final boolean hasQueuedPredecessors() {
+        // The correctness of this depends on head being initialized
+        // before tail and on head.next being accurate if the current
+        // thread is first in queue.
+        Node t = tail; //为空Read fields in reverse initialization order
+        Node h = head;//为空
+        Node s;
+        return h != t && // null!=null，刚开始的时候，返回false
+            ((s = h.next) == null || s.thread != Thread.currentThread());
+    }
+    ```
+2. t2 进来 tryAcquire, 由于 t1 已经建立了队列并且获取到资源, 所有 t2 获取资源的两种条件都不满足, 但由于此时 t2 的前序节点是 head, 因此会先自旋一次尝试获得资源, 在修改前节点的 waitStatus 为 signal , 再自旋一次, 如果还拿不到锁, 则进入阻塞状态等待
+    ![](https://pic2.zhimg.com/80/v2-b1fb164007442b1c57dd6ea6403731e1_1440w.jpg)
+    ```java
+    public final void acquire(int arg) {
+        if (!tryAcquire(arg) && //此时抢不到锁
+            acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+            selfInterrupt();
+    }
+    private Node addWaiter(Node mode) {
+        Node node = new Node(Thread.currentThread(), mode); //新建node
+        // Try the fast path of enq; backup to full enq on failure
+       //提前直接插入，避免了检测创建新队列的操作
+        Node pred = tail;
+        if (pred != null) {
+            node.prev = pred;
+            if (compareAndSetTail(pred, node)) {
+                pred.next = node;
+                return node;
+            }
+        } 
+        //入队
+        enq(node);
+        return node;
+    }
+    private Node enq(final Node node) {
+        for (;;) {//死循环
+            Node t = tail;
+            if (t == null) { // 创建队列
+                if (compareAndSetHead(new Node()))//CAS地去创建一个新头部
+                    tail = head;
+            } 
+            else {
+                node.prev = t;//插入末尾
+                if (compareAndSetTail(t, node)) {//让tail指向t2
+                    t.next = node;//插入队尾
+                    return t;
+                }
+            }
+        }
+    }
+    // 在队列中尝试获取锁acquireQueued
+    final boolean acquireQueued(final Node node, int arg) {
+            boolean failed = true;
+            try {
+                boolean interrupted = false;
+                for (;;) { //死循环
+                    final Node p = node.predecessor();//拿出上一个节点
+                    //判断上一个节点是不是头部，如果是头部则会尝试获取锁==自旋锁
+                    if (p == head && tryAcquire(arg)) {
+                        setHead(node);
+                        //此时前node已经没有引用，就会被GC。所以thread=null也是为了gc无引用 
+                        p.next = null; // help GC 
+                        failed = false;
+                        return interrupted;
+                    }
+                    if (shouldParkAfterFailedAcquire(p, node) &&//第一次返回false,第二次返回true
+                        parkAndCheckInterrupt())//第二次返回true之后才会执行
+                        interrupted = true;
+                }
+            } finally {
+                if (failed)
+                    cancelAcquire(node);
+            }
+        }
+    //为了可以二次自旋,这个函数的名字表示自旋失败后应该park
+    private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
+        int ws = pred.waitStatus;//默认是0
+        if (ws == Node.SIGNAL)
+            /*
+            * This node has already set status asking a release
+            * to signal it, so it can safely park.
+            */
+            return true;
+        if (ws > 0) {
+            /*
+            * Predecessor was cancelled. Skip over predecessors and
+            * indicate retry.
+            */
+            do {
+                node.prev = pred = pred.prev;
+            } while (pred.waitStatus > 0);
+            pred.next = node;
+        } else {
+            /*
+            * waitStatus must be 0 or PROPAGATE.  Indicate that we
+            * need a signal, but don't park yet.  Caller will need to
+            * retry to make sure it cannot acquire before parking.
+            */
+            compareAndSetWaitStatus(pred, ws, Node.SIGNAL); //把ws改为-1
+        }
+        return false;
+    }
+    ```
+3. 此时由于前面有 t2 在排队, 因此也不需要尝试获得锁, 直接进入排队
+    ![](https://pic1.zhimg.com/80/v2-4b3af12734ae266ba3660b133a02060c_1440w.jpg)
+
+**解锁**
+1. 先将 state - 1, 因为可重入的特性, 只有当 state = 0 才能释放锁
+2. 如果头节点有后续节点, 且 waitStatus != 0, 则尝试唤醒后续节点
+3. 首先检查后续节点是否已取消 (waitStatus = CANCEL = 1), 如果是, 则从队尾 tail 往前搜索没有取消的节点进行唤醒
+4. 节点唤醒后, 继续 CAS 将头节点设置为当前节点, 此时可以帮助 gc, 把原头节点的 next 设置为 null, 本头节点的 Thread 也可以设置为 null
+
+![](https://pic2.zhimg.com/80/v2-a672344aecf480d4dbe9c8317ff949f5_1440w.jpg)
+![](https://pic1.zhimg.com/80/v2-aec008761f78022454117cd181f031b8_1440w.jpg)
+
+## 非公平锁
+```java
+final void lock() {
+    if (compareAndSetState(0, 1))
+        setExclusiveOwnerThread(Thread.currentThread());
+    else
+        acquire(1);
+}
+final boolean nonfairTryAcquire(int acquires) {
+    final Thread current = Thread.currentThread();
+    int c = getState();
+    if (c == 0) {
+        if (compareAndSetState(0, acquires)) {
+            setExclusiveOwnerThread(current);
+            return true;
+        }
+    }
+    else if (current == getExclusiveOwnerThread()) {
+        int nextc = c + acquires;
+        if (nextc < 0) // overflow
+            throw new Error("Maximum lock count exceeded");
+        setState(nextc);
+        return true;
+    }
+    return false;
+}
+```
+
+## 公平锁与非公平锁的区别
+1. 非公平锁会在一开始进锁方法进行一次 CAS 获得锁
+2. 非公平锁后续线程进来后, 不需要判断是否需要排队, 但如果抢不到锁同样需要进入队列等待, 所以在队列里也是公平的
+
+整体来说, 非公平锁的效率较高, 因为减少了线程阻塞的次数, 同时也不需要判断是否需要排队, 但可能会导致饥饿问题

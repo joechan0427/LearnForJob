@@ -1,6 +1,8 @@
 # 奇怪的排序算法
 [排序](https://zhuanlan.zhihu.com/p/53464092)
 
+# bitmap
+
 # rand5 实现 rand7
 当实现比 randn 更小的数时, 可以直接丢弃大于 x 的值
 ```java
