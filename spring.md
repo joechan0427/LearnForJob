@@ -89,7 +89,7 @@ public class ProxyTest {
 - CGLIB是基于继承机制,继承被代理类,所以方法不要声明为final,然后重写父类方法达到增强了类的作用.
 它底层是基于asm第三方框架,是对代理对象类的class文件加载进来,通过修改其字节码生成子类来处理.
 生成类的速度慢,但是后续执行类的操作时候很快.
-可以针对类和接口(不能针对 final 类).
+可以针对类和接口(不能针对 final 类).==如果目标类的方法是final的话，就会直接调用目标类的方法==
 
 #### 反射为什么慢
 1. 接口的通用性，java 的invoke 方法 是传object, 和object[] 数组的。
@@ -151,6 +151,8 @@ public class MyBeanFactoryPostProcessor implements BeanFactoryPostProcessor {
 
 [生命周期](https://www.jianshu.com/p/1dec08d290c1)
 ## bean 的作用域
+使用 `scope` 注解里的`scopeName`配置
+
 | 类型 | 说明 |
 | - | - |
 |singleton | Spring容器中只会存在一个共享的Bean实例 |
@@ -209,7 +211,7 @@ Sping选择了第二种，如果是第一种，就会有以下不同的处理逻
 
 ## 事务传播行为
 事务传播行为（propagation behavior）指的就是当一个事务方法被另一个事务方法调用时，这个事务方法应该如何进行。
-==要注意 @Transaction 注解使用了 AOP, 即从容器中获得对象时是代理对象, 因此在非事务方法里, 调用本类事务方法不会生成事务, 因为使用的是 this 对象==
+==要注意 @Transaction 注解使用了 AOP, 即调用方法时会有拦截器代理对象调用方法. 因此在非事务方法里, 调用本类事务方法不会生成事务, 因为使用的是 this 对象==
 以下针对 A 类 a 方法与 B 类 b 方法
 **spring 定义了七种事务传播行为**
 ![](https://ghost.oss.sherlocky.com/0/fa/c28e2c20b3faa130f2cfe4a5ce3b3.png)
