@@ -243,7 +243,7 @@ public class SingleTon{
 
 锁只能升级, 不能降级
 
-各状态 markword
+==各状态 **markword**==
 
 **无锁**
 25 bits | 4 bits | 1 bit (是否偏向) | 2 bits
@@ -693,3 +693,36 @@ final boolean nonfairTryAcquire(int acquires) {
 2. 非公平锁后续线程进来后, 不需要判断是否需要排队, 但如果抢不到锁同样需要进入队列等待, 所以在队列里也是公平的
 
 整体来说, 非公平锁的效率较高, 因为减少了线程阻塞的次数, 同时也不需要判断是否需要排队, 但可能会导致饥饿问题
+
+# 乐观锁 (CAS)
+## Unsafe 类
+Java 无法直接使用底层内存, 这使得 Java 相对安全
+1. 不能直接修改别的类的变量
+2. 内存交由 jvm 管理, 可以不显式进行垃圾回收
+
+然而, jvm 还是开了后门, Unsafe 类可以提供硬件级别的**原子操作**, 但是 jdk 并没有把该类暴露出来, 因此对其的使用是受限制
+
+## CAS
+当前的处理器基本都支持CAS，只不过不同的厂家的实现不一样罢了。
+
+基本思想: CAS有三个操作数：内存值V、旧的预期值A、要修改的值B，当且仅当预期值A和内存值V相同时，将内存值修改为B并返回true，否则什么都不做并返回false。
+
+## 原子类包
+**AtomicInteger 的类变量**
+```java
+private static final Unsafe unsafe = Unsafe.getUnsafe();
+private static final long valueOffset;
+
+static {
+    try {
+        valueOffset = unsafe.objectFieldOffset
+         (AtomicInteger.class.getDeclaredField("value"));
+    } catch (Exception ex) { throw new Error(ex); }
+}
+ 
+private volatile int value;
+```
+
+1. valueOffset表示的是变量值在内存中的偏移地址，因为Unsafe就是根据内存偏移地址获取数据的原值的
+2. value是用volatile修饰的，这是非常关键的
+

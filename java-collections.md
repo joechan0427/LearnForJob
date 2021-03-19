@@ -91,6 +91,9 @@ private void writeObject(java.io.ObjectOutputStream s)
 
 ### 1. 存储结构
 HashMap 使用拉链法来解决冲突，同一个链表中存放哈希值和散列桶取模运算结果相同的 Entry。
+默认长度是 16, 当指定长度时, 会自动转换成大于指定长度的 2^n 次方(如 3 会转成 4)
+默认负载因子 loadFactor 为 0.75, 当数组使用程度大于数组长度*loadFactor 时, 会开始扩容 (是空间换时间的思想)
+
 ![](https://camo.githubusercontent.com/363d11bc36ca5b717ea62374b76ea2a47c287c15b072fd076ab75388abb202a5/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f696d6167652d32303139313230383233343934383230352e706e67)
 
 ### 2. 拉链法
@@ -103,6 +106,8 @@ HashMap 允许插入键为 null 的键值对。但是因为无法调用 null 的
 2. 取余. 使用hash值与数组长度-1 做 & 操作. 前提是数组长度是2的n次方
 
 ### 4. 扩容
+![](https://awps-assets.meituan.net/mit-x/blog-images-bundle-2016/d669d29c.png)
+
 假设总的键值有N个, Node数组长度为M, 则平均的链表长度为 N/M.
 因此为了减小查找成本 O(N/M), 应使 M 尽可能的长
 与扩容有关的长度为
@@ -126,7 +131,46 @@ HashMap 允许插入键为 null 的键值对。但是因为无法调用 null 的
 #### 为什么是节点数为 8 才树化
 在理想情况下, 链表长度符合泊松分布, 链表大于 8 的概率极低, 所以树化的可能也不高, 而因为树节点占用的空间是链表节点的 2 倍, 因此 jdk 设计人员也不希望出现树化的情况, 选择 8 是因为
 #### 红黑树
-[红黑树](https://www.jianshu.com/p/e136ec79235c)
+##### 红黑树的性质
+1. 节点非黑即红
+2. 根节点是黑色
+3. 红节点不能直接相连
+4. 每个节点到自身子树的所有叶子节点, 经过的黑节点数量一致
+5. 叶子节点都为黑色
+    1. 如果一个节点有黑子节点, 则必有两个子节点
+
+
+子节点一黑一红
+![](https://upload-images.jianshu.io/upload_images/2392382-3e64f9f3481b209d.png)
+如节点 F
+
+
+##### 红黑树的操作
+1. 变色
+2. 左旋
+![](https://upload-images.jianshu.io/upload_images/2392382-a95db442f1b47f8a.png)
+3. 右旋
+![](https://upload-images.jianshu.io/upload_images/2392382-0676a8e2a12e2a0b.png)
+
+##### 红黑树的插入
+先查找, 再插入, ==默认插入红节点(因为红节点不会影响性质5, 可以减少自平衡的操作)==
+![](https://upload-images.jianshu.io/upload_images/2392382-fa2b78271263d2c8.png)
+
+1. 插入节点为根节点
+直接将插入的红节点变色
+2. 插入的节点父节点为黑色
+直接插入该红节点, 不会影响性质
+3. 插入的节点父节点为红色(根据性质推出==必有祖父节点且为黑色==)
+    1. 叔叔节点为红节点
+        插入后, 由黑红红, 变成红黑红, 再将祖父节点作为插入的节点, 查看是否需要向上再调整
+        ![](https://upload-images.jianshu.io/upload_images/2392382-9f2c746bf0769f49.png)
+        ![](https://upload-images.jianshu.io/upload_images/2392382-5374ea3c2956b441.png)
+    2. 没有叔叔节点/叔叔节点为黑色
+        单纯从==插入前==来看, 如果拥有叔叔节点, 则必为叶子节点(即空节点), 否则不满足性质5
+        因此此时只有下图两种情况
+        ![](https://upload-images.jianshu.io/upload_images/2392382-ab4097b750826870.png)
+        ![](https://upload-images.jianshu.io/upload_images/2392382-fbfc4f299941cb8b.png)
+
 ## ConcurrentHashMap
 ### 1. 存储结构
 **jdk1.7**
