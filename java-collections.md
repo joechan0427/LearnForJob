@@ -184,12 +184,14 @@ Node 数组 + 链表 / 红黑树。当冲突链表达到一定长度时，链表
 
 ### 2. put
 **jdk1.7**
-1. 根据 hash 获取segment 的位置. (hash的高 n 位与 mask 做 & 运算. 如 segment 个数为16, 则取 hash 的高4位与 1111 做 & 运算)
+1. 根据 hash 获取segment 的位置. (hash的高 n 位与 mask 做 & 运算. 如 segment 个数为16, 则 hash 右移 28 位得到高4位与 1111 做 & 运算)
 2. 如该 segment 为空, 则初始化(其实就是单例模式):
     1. 检查 segment 是否为 null
     2. 如果为空, 以 segment[0] 为模板, 得到loadFactor, threshold, capacity
     3. 自旋判断是否为空, CAS 将新建的segment赋值给对应的地方
-3. segment.put
+3. 尝试自旋获取锁，如果重试的次数达到了阈值则改为阻塞锁获取
+4. put
+5. 释放锁
 
 **jdk1.8**
 1. 根据 key 计算出 hashcode 。
@@ -198,6 +200,26 @@ Node 数组 + 链表 / 红黑树。当冲突链表达到一定长度时，链表
 4. 如果当前位置的 hashcode == MOVED == -1,则需要进行扩容。
 5. 如果都不满足(当前位置有数据, 不管是链表(尾插法)还是红黑树)，则利用 synchronized 锁写入数据。
 6. 如果数量大于 TREEIFY_THRESHOLD 则要转换为红黑树。
+![](https://pic1.zhimg.com/80/v2-170354cb441d3d0e5bef9b41f2ea922c_1440w.jpg)
+
+### 3. get
+**jdk 1.7**
+1. 定位 segment
+2. 定位 hashEntry
+
+整个过程不需要加锁, 因为 node 的 val 是 final 而且是 volatile 的
+
+### 4. resize (扩容)
+1. 在 put 之后, 要更新数组元素的个数. 如果达到扩容阈值, 则会触发. ==同时 CAS 保证只有一个线程可以初始化新的数组, 其他只能帮助扩容==
+2. 元素迁移时, 统一按照从后往前的顺序, 如图长度为 8, 线程 A 先进来, 从下标 7 开始
+    ![](https://pic1.zhimg.com/80/v2-ab562cbf933d85fbbaed0bbbe072f1f0_1440w.jpg)
+3. 同时, 会有一个 bound (==根据 cpu 核心数确定==)来标识该线程可以迁移多少个位置, 如上 bound 为 2 时, A 线程迁移 7 和 6 的元素. 线程 B 通过 `CAS( expected = transferIndex, newValue = bound = transferIndex-步长)`, 来确定自己需要迁移 5, 4 的元素. 因此每个线程迁移的桶互不干扰
+
+> transferindex 表示所有线程总共推进的元素下标位置
+
+4. 迁移一个位置的元素时, 与 hashmap 相同, node 的 hash & oldlength 来确定需不需要往前移动 oldlength 
+5. 当迁移完成(或该节点本身就为 null)后, 通过设置 forwardingNode 节点(特殊节点, hash=-1)来告诉其他线程, 该节点已迁移完毕. 
+==此时其他线程如果执行 put 或 remove 等写操作, 就会先帮助扩容. 如果执行 get 操作, 则会调用 forwardingNode 节点的 find 方法, 因为 forwarddingNode 节点都拥有新的数组的引用, 所以可以找到==
 
 # 三. 容器中的设计模式
 ## 适配器模式

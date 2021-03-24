@@ -23,3 +23,11 @@
 ## 操作系统 (3 days)
 
 ## 项目 (3 days)
+
+## todo:
+
+1. ~~concurrentHashMap~~
+2. spring security 整理
+3. ~~高楼扔鸡蛋~~
+4. 百度面经
+    1. https://www.nowcoder.com/discuss/618459?source_id=discuss_experience_nctrack&channel=-1

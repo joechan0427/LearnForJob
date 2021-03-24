@@ -80,6 +80,67 @@ stw 时间 比 minor gc 长, 一般是 10 倍以上
 # 网络
 ## 使用 linux 命令实现一个软路由
 
+## tcp 握手的丢失问题
+1. 第一次握手丢失
+此时服务端还不知道客户端发起请求, 因此主要是客户端的重传
+2. 第二次握手丢失
+服务端: 一直未收到第三次握手, 会重传 5 次, 之后还未收到第三次握手则关闭
+客户端: 由于第二次握手丢失, 客户端会重传第一次握手, 服务端再次收到第一次握手后会马上重传第二次握手
+3. 第三次握手丢失
+客户端: 由于收到第二次握手, 客户端已建立连接, 进入 established 状态, 此时可以马上发送数据
+服务端: 当一直收不到第三次握手, 会重传 5 次第二次握手, ==如果收到客户端发送的正常数据, 服务端会正常建立!==
+[参考](https://stackoverflow.com/questions/16259774/what-if-a-tcp-handshake-segment-is-lost)
+
+## tcp 挥手丢失问题
+1. 第一次挥手丢失
+2. 第二次挥手丢失
+客户端: 重新发送第一次挥手
+服务端: 收到重复的第一次挥手后, 会立刻重发第二次挥手. ==或者当服务端发送第三次挥手, 客户端接收后直接由 FIN_WAIT1 状态跳转到 TIME_WAIT 状态==
+3. 第三次挥手丢失
+服务端: 重传
+客户端: 等待, 因为此时客户端已不能发送报文, == tcp 没有对此状态的处理, 但是 Linux 有(防止服务端突然跑路), 设定一个超时时间 tcp_fin_timeout, 超过后, 直接进入 close==
+4. 第四次挥手丢失
+这就是 time_wait 等待 2MSL 的意义
+服务端: 重发第三次挥手
+客户端: 再次收到服务端的第三次挥手, 会发送第四次挥手. ==如果此时已和新的服务器建立连接, 收到上一次连接的第三次挥手, 会直接向其发送 RST, 服务端收到后, 进入CLOSE==
+
+
+## 为什么需要挥手的 time_wait 需要等待 2*MSL
+1. 因为客户端最后一个报文可能丢失, 如果丢失, 则服务端不能进入关闭状态, 会一直重发一个请求确认的报文, 如果客户端在这个 TIME-WAIT 状态再次收到服务端的请求确认的报文, 则会再发送一次最后确认报文
+2. 为了让这次 TCP 连接的所有报文消失在网络中, 不影响下次连接
+
+## 为什么握手是三次, 挥手是四次
+因为握手时, 第二次握手是请求建立连接和确认请求放在一个报文里
+而挥手时, 服务端接收到客户端的连接释放请求后, 可以继续发送数据, 因此需要分开确认报文和连接释放报文
+
+## 如果已经建立了连接，但是客户端突然出现故障了怎么办？
+TCP还设有一个保活计时器，显然，客户端如果出现故障，服务器不能一直等下去，白白浪费资源。服务器每收到一次客户端的请求后都会重新复位这个计时器，时间通常是设置为2小时，若两小时还没有收到客户端的任何数据，服务器就会发送一个探测报文段，以后每隔75秒发送一次。若一连发送10个探测报文仍然没反应，服务器就认为客户端出了故障，接着就关闭连接。
+
+## tcp 产生 rst 标志的几种情况
+> 在TCP协议中，rst段标识复位，用来异常的关闭连接。在TCP的设计中它是不可或缺的，发送rst段关闭连接时，不必等缓冲区的数据都发送出去，直接丢弃缓冲区中的数据。而接收端收到rst段后，也不必发送ack来确认. 此后, ==双方进入 close 状态==
+
+1. 目标端口未监听
+2. 防火墙拦截了(比如为了防止 rst 攻击)
+  > rst 攻击: 冒充服务端向客户端发送 rst 标志, 导致客户端不正常关闭连接
+3. 向已关闭的端口发送数据(比如服务端处于 FIN_WAIT2, 客户端发送数据)
+
+## 客户端 close-wait, TIME-WAIT 状态过多会产生什么后果？怎样处理？
+当客户端向服务端的 80 端口发起 tcp 连接时, 会随机一个端口用于通信(比如, 12345), ==此时会在服务端的进程的文件描述符占用一个五元组(协议, 本地ip, 本地端口, 远程ip, 远程端口)==, 所以一个客户端可以向同一服务器的同一端口建立两个不同的请求, 但是不能过多, 因为端口不一致
+
+### close-wait 过多
+当客户端异常退出, 而服务端没有处理这个事件, 就会导致 close-wait 状态
+**危害:** 但有大量 close-wait, 服务端==相当于要打开多个文件==, 因为==要在 fd 里占一个位置==, 而打开的文件数是有限的, 这样会导致==后续无法响应其他连接==
+**处理:** 使用 epoll 监听客户端退出的事件 EPOLLRDHUP, 当该事件发生, 直接 close 掉这个连接
+
+### time-wait 过多
+对客户端来说: 当同时建立大量短连接, 释放时会出现 time-wait 过多, 此时可能导致端口不够用
+对服务端来说: 
+1. time-wait 状态的连接会占用一些内存, 但比 established 状态少, 所以大量 time-wait 状态会使可用内存减少. 
+2. time-wait 状态==已经没有占用 fd 的位置了, 所以不影响后续其他请求==
+3. 一般来说, 对服务端影响不大, 而且最长占用 2MSL 的时间(一般是两分钟). 比如服务进程被 kill, 那么之前建立的连接就会变成 time-wait. 此时在 2MSL 的时间内重启服务会报端口占用
+  [参考](https://stackoverflow.com/questions/1803566/what-is-the-cost-of-many-time-wait-on-the-server-side/1806033#1806033)
+
+---
 # 项目
 
 ## top 指令
@@ -195,6 +256,92 @@ QPS(TPS)=并发数/平均响应时间
 - pv : page view a day
 - uv : unique view
 - dau : day active user, 日活量. DAU通常统计一日（统计日）之内，登录或使用了某个产品的用户数（去除重复登录的用户），与UV概念相似
+
+## jwt
+### CSRF (cross-site request forgery)
+![](https://imgconvert.csdnimg.cn/aHR0cHM6Ly9tbWJpei5xcGljLmNuL21tYml6X3BuZy9RQjZHNFpvRTE4NkRPbWhGVjUweGZMVEpWRHNpYkltUFNpYk1qOHRWY0FhSDU2YjgzbUZMOEFaeVZaUXRkemJrcWtvZVlvOWRnbFhzamlicjhFNjB5WWRSQS82NDA)
+
+#### 防御
+1. referer check
+  在 http 协议, 头部有一个字段是 referer, 记录 http 请求来源, 可以通过该值来屏蔽非同源请求
+  **弊端:**
+    1. 使用该方法相当于将本站的安全交给浏览器来守护
+    2. 该值在非主流/古老浏览器可能会被篡改
+    3. 用户可以选择关闭该字段
+2. 加验证码
+  **弊端**
+    1. 用户体验差
+
+#### XSS
+XSS全称cross-site scripting（跨站点脚本），是一种代码注入攻击，是当前 web 应用中最危险和最普遍的漏洞之一。攻击者向网页中注入恶意脚本，当用户浏览网页时，脚本就会执行，进而影响用户，比如关不完的网站、盗取用户的 cookie 信息从而伪装成用户去操作，危害数据安全。
+
+### jwt原理
+![](https://imgconvert.csdnimg.cn/aHR0cHM6Ly9tbWJpei5xcGljLmNuL21tYml6X3BuZy9RQjZHNFpvRTE4NkRPbWhGVjUweGZMVEpWRHNpYkltUFNlSkdiMFVqTEtOT2RNaWFFNFBuTkE5YnFVdU1tSGVNaldzeFNyYWJXYk9QWWljeVFtS1JjMnlkZy82NDA?x-oss-process=image/format,png)
+#### jwt 结构
+![](https://imgconvert.csdnimg.cn/aHR0cHM6Ly9tbWJpei5xcGljLmNuL21tYml6X3BuZy9RQjZHNFpvRTE4NkRPbWhGVjUweGZMVEpWRHNpYkltUFNXU3pENGdzUE5KeWliNk5RTHhSWFA3eTBQTmlhdjBaaDN0aWFBZUNkaWFFd2pCdDYxbjdUNDdsWUdBLzY0MA?x-oss-process=image/format,png)
+
+1. **头部 (header)**
+- 声明类型: jwt
+- 声明签名算法: hs256
+```json
+{
+  "typ": "JWT",
+  "alg": "HS256"
+}
+```
+之后经过 base64url 算法编码得到实际头部
+2. **载荷 (payload)**
+存放有效信息, ==不要存放敏感信息==, 因为==默认不加密, 只是编码==
+- 签发人
+- 过期时间
+- 生效时间
+- 签发时间
+
+还可以定义私有字段
+
+3. **签名 (signature)**
+对前两部分签名, 防止篡改
+使用对称加密算法 HS256 进行签名, 因此服务端必须存储一个密钥 (secret), 按下面的公式签名
+```java
+HMACSHA256(
+  base64UrlEncode(header) + "." +
+  base64UrlEncode(payload),
+  secret)
+```
+
+### jwt 存放在哪里
+![](https://imgconvert.csdnimg.cn/aHR0cHM6Ly9tbWJpei5xcGljLmNuL21tYml6X3BuZy9RQjZHNFpvRTE4NkRPbWhGVjUweGZMVEpWRHNpYkltUFNHcE4xQmZUSGJNWm16ZXVYUHBqVXZwUEJpYXZMNFVZeWplV0lFSE1idWt6NXRWWWZieHFZT0h3LzY0MA?x-oss-process=image/format,png)
+1. 保存在 localStorage
+2. 保存在 sessionStorage
+
+该域内的 js 脚本可以读取, 并将其放在请求的 http 的 header 里, 但是存在 XSS 风险
+
+3. 保存在 cookie
+只是保存在 cookie, 不使用 cookie 鉴权, 发送请求时, js读取 cookie 放在 header 里
+4. 保存在 cookie, 并设置 httponly
+意味着 cookie 不可读取和修改, 本域的 js 也不能, 因此只能使用 cookie 鉴权, 会有 csrf 问题
+#### cookie, session storage, local storage
+![](https://miro.medium.com/max/875/1*JiT0KNuYIO8l5QBtpNtOHA.png)
+- local storage
+在同源的所有标签页和窗口之间共享数据。
+数据不会过期。它在浏览器重启甚至系统重启后仍然存在。
+- session storage
+具有相同页面的另一个标签页中将会有不同的存储。
+但是，它在同一标签页下的 iframe 之间是共享的（假如它们来自相同的源）。
+### jwt 的校验
+服务端根据发送的 jwt 的前两部分加上服务端的 secret 生成新的签名, 将其与发送的签名比较
+```java
+HMACSHA256(
+  base64UrlEncode(header) + "." +
+  base64UrlEncode(payload),
+  secret)
+```
+
+
+## spring security
+### 
+
+
 # 数据库
 ## 数据库 delete 和TRUNCATE区别
 - delete：删除表的内容，表的结构存在，索引定义还在，可以回滚恢复；
@@ -215,11 +362,13 @@ QPS(TPS)=并发数/平均响应时间
 （3）设置阈值：SET GLOBAL long_query_time=3;
 （4）查看阈值：SHOW 【GLOBAL】 VARIABLES LIKE 'long_query_time%';　　#重连或新开一个会话才能看到修改值
 （5）通过修改配置文件my.cnf永久生效，在[mysqld]下配置：
+```vim
 　　[mysqld]
 　　slow_query_log = 1;　　#开启
 　　slow_query_log_file=/var/lib/mysql/atguigu-slow.log　　　#慢日志地址，缺省文件名host_name-slow.log
 　　long_query_time=3;　　  #运行时间超过该值的SQL会被记录，默认值>10
-　　log_output=FILE　　　　　　　　　　　
+　　log_output=FILE　　　
+```
  (6) 慢 sql 语句将存放在 mysql 目录下
 
 ### 慢查询优化基本步骤
