@@ -31,3 +31,5 @@
 3. ~~高楼扔鸡蛋~~
 4. 百度面经
     1. https://www.nowcoder.com/discuss/618459?source_id=discuss_experience_nctrack&channel=-1
+5. ~~topK~~
+6. ~~旋转数组的最小值~~

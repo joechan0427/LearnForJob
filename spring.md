@@ -331,3 +331,147 @@ Sping选择了第二种，如果是第一种，就会有以下不同的处理逻
 [自动配置](https://segmentfault.com/a/1190000030685746)
 
 ![](https://afoo.me/posts/images/how-spring-boot-autoconfigure-works.png)
+
+# spring security
+## 核心组件
+![](https://kirito.iocoder.cn/spring%20security%20architecture.png)
+### securityContextHolder
+用于存储安全上下文 (security context) 的信息(当前用户, 是否已经认证, 拥有的权限)
+==默认使用 threadlocal 存储信息. 将用户与线程绑定==
+
+#### 获取当前用户信息
+==因为身份信息与线程绑定, 因此可以在程序的任何地方使用静态方法获取用户信息==
+
+```java
+Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+if (principal instanceof UserDetails) {
+    String username = ((UserDetails)principal).getUsername();
+} else {
+    String username = principal.toString();
+}
+```
+
+getAuthentication()返回了认证信息，再次 getPrincipal() 返回了身份信息，UserDetails 便是 Spring 对身份信息封装的一个接口
+
+### Authentication
+```java
+package org.springframework.security.core;// <1>
+
+public interface Authentication extends Principal, Serializable { // <1>
+    Collection<? extends GrantedAuthority> getAuthorities(); // <2>
+
+    Object getCredentials();// <2>
+
+    Object getDetails();// <2>
+
+    Object getPrincipal();// <2>
+
+    boolean isAuthenticated();// <2>
+
+    void setAuthenticated(boolean var1) throws IllegalArgumentException;
+}
+```
+
+- getAuthorities() : 权限列表, 默认是 GrantedAuthority 接口的一些实现类, 通常是代表权限的一系列字符串
+- getCredentials() : 密码信息, 通常在验证后会移除
+- getPrincipal() : 通常返回 UserDetails 的实现类
+
+### spring security 大致身份认证过程
+![](./java-imgs/springsecurity.jpg)
+1. 用户名和密码被过滤器获取, 封装成 `authentication`, 通常是 `UsernamePasswordAuthenticationToken` 这个实现类
+2. AuthenticationManager 身份管理器负责验证这个 Authentication
+3. 认证成功后, AuthenticationManager 身份管理器返回一个填充了信息的 Authentication (如权限等, 但密码通常移去)
+4. SecurityContextHolder 安全上下文容器通过SecurityContextHolder.getContext().setAuthentication(), 将该 Authentication 与线程绑定
+
+### AuthenticationManager
+AuthenticationManager 是认证的接口, 也是发起认证的出发点. 但他==一般不直接进行认证, 而是通过委托者模式==委托给各个 AuthenticationProvider 进行认证
+
+原因在于 spring security 支持多种验证方式, 除了传统的用户名密码, 还支持邮箱密码, 手机号密码, 甚至指纹, 因此每种验证方式对应一个 AuthenticationProvider 实现类. 默认策略下, 只需要通过其中一个便可认证成功
+
+1. AuthenticationManager 接口的常用实现类 providerManager 内部会维护一个 `List<AuthenticationProvider>` 
+2. 当执行验证方法时, 会按照 list 里的依次顺序依次验证, 如果返回非 null, 则立刻返回, 如果为 null 则下一个 AuthenticationProvider 尝试验证
+3. 如果都返回 null, 则会抛出异常
+
+#### DaoAuthenticationProvider
+AuthenticationProvider 中常用的一个实现 DaoAuthenticationProvider. retrieveUser() 方法利用前面得到的用户名去数据库查找对应的记录返回 UserDetails 对象. additionalAuthenticationChecks 进行密码对比, 如果没有抛出异常, 则说明密码正确
+
+### UserDetails 和 UserDetailsService
+UserDetails 与前面的 Authentication 接口类似, 都有 username, authorities 属性
+
+但 Authentication 的 getCredentials()与 UserDetails 中的 getPassword() 需要被区分对待，前者是用户提交的密码凭证，后者是用户正确的密码，认证器其实就是对这两者的比对
+
+UserDetailsService 则负责从特定的地方(数据库, 内存) 获取用户信息, 封装成 UserDetails, 用于 AuthenticationProvider 中与 Authentication 进行对比
+
+## 核心配置
+### 1. DelegatingFilterProxy
+通过 DelegatingFilterProxyRegistrationBean 这个 bean 来帮助注册的, RegistrationBean 是 spring boot 用于将 servlet, filter 容器化的注册类
+
+它本身是 Spring Web 包中的类，并不是 SpringSecurity 中的类. 使用这个代理类来代理真正的 SpringSecurityFilterChain.
+
+DelegatingFilterProxy 实现了 javax.servlet.Filter 接口, 使得他可以作为一个标准的 web 过滤器, 职责==用于从容器中获取并调用真正的 springSecurityFilterChain - FilterChainProxy==
+
+### 2. @EnableWebSecurity
+```java
+@Import({ WebSecurityConfiguration.class, // <2>
+      SpringWebMvcImportSelector.class }) // <1>
+@EnableGlobalAuthentication // <3>
+@Configuration
+public @interface EnableWebSecurity {
+   boolean debug() default false;
+}
+```
+
+一个组合注解, 其中 @Import 是 springboot 提供的用于引入外部的配置的注解
+用于加载 WebSecurityConfiguration 和 AuthenticationConfiguration 两个核心配置类
+
+#### 2.1 WebSecurityConfiguration
+完成了声明注册 springSecurityFilterChain(实质类 SecurityFilterChain) 的作用，并且最终交给 DelegatingFilterProxy 这个代理类，负责拦截请求（注意 DelegatingFilterProxy 这个类不是 spring security 包中的，而是存在于 web 包中，spring 使用了代理模式来实现安全过滤的解耦）
+
+也就是说 DelegatingFilterProxy 最终调用 springSecurityFilterChain
+
+##### 2.1.1 SecurityFilterChain
+在 WebSecurityConfiguration 中声明注册
+
+#### 2.2 AuthenticationConfiguration
+负责生成全局的身份认证管理者 AuthenticationManager
+
+### 3. WebSecurityConfigurerAdapter
+使用==适配器模式, 使用 adapter 的好处是: 我们可以选择性的修改我们的配置, 而不用覆盖其他不相关的配置==
+
+常用
+```java
+@Configuration
+@EnableWebSecurity
+public class CustomWebSecurityConfig extends WebSecurityConfigurerAdapter {
+  
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+            .authorizeRequests()
+                .antMatchers("/resources/**", "/signup", "/about").permitAll()
+                .antMatchers("/admin/**").hasRole("ADMIN")
+                .antMatchers("/db/**").access("hasRole('ADMIN') and hasRole('DBA')")
+                .anyRequest().authenticated()
+                .and()
+            .formLogin()
+                .usernameParameter("username")
+                .passwordParameter("password")
+                .failureForwardUrl("/login?error")
+                .loginPage("/login")
+                .permitAll()
+                .and()
+            .logout()
+                .logoutUrl("/logout")
+                .logoutSuccessUrl("/index")
+                .permitAll()
+                .and()
+            .httpBasic()
+                .disable();
+    }
+}
+```
+
+可以配置某些资源直接放行, 某些资源需要登陆
+
+
