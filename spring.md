@@ -83,7 +83,7 @@ public class ProxyTest {
 ![](https://pic2.zhimg.com/80/v2-6aacbe1e9df4fe982a68fe142401952e_1440w.jpg?source=1940ef5c)
 
 ### JDK 动态代理和 CGLIB 动态代理的区别
-- JDK是基于反射机制,生成一个实现代理接口的匿名类,然后重写方法,实现方法的增强.
+- JDK是基于反射机制,==生成一个实现代理接口的匿名类==,然后重写方法,实现方法的增强.
 它生成类的速度很快,但是运行时因为是基于反射,调用后续的类操作会很慢.
 而且他是只能针对接口编程的.
 - CGLIB是基于继承机制,继承被代理类,所以方法不要声明为final,然后重写父类方法达到增强了类的作用.
@@ -333,6 +333,8 @@ Sping选择了第二种，如果是第一种，就会有以下不同的处理逻
 ![](https://afoo.me/posts/images/how-spring-boot-autoconfigure-works.png)
 
 # spring security
+[参考](https://www.cnkirito.moe/categories/Spring-Security/)
+[参考](https://cloud.tencent.com/developer/article/1765703 )
 ## 核心组件
 ![](https://kirito.iocoder.cn/spring%20security%20architecture.png)
 ### securityContextHolder
@@ -423,7 +425,9 @@ public @interface EnableWebSecurity {
 ```
 
 一个组合注解, 其中 @Import 是 springboot 提供的用于引入外部的配置的注解
-用于加载 WebSecurityConfiguration 和 AuthenticationConfiguration 两个核心配置类
+用于加载两个核心配置类
+1. WebSecurityConfiguration 
+2. AuthenticationConfiguration 
 
 #### 2.1 WebSecurityConfiguration
 完成了声明注册 springSecurityFilterChain(实质类 SecurityFilterChain) 的作用，并且最终交给 DelegatingFilterProxy 这个代理类，负责拦截请求（注意 DelegatingFilterProxy 这个类不是 spring security 包中的，而是存在于 web 包中，spring 使用了代理模式来实现安全过滤的解耦）
@@ -474,4 +478,29 @@ public class CustomWebSecurityConfig extends WebSecurityConfigurerAdapter {
 
 可以配置某些资源直接放行, 某些资源需要登陆
 
+## 核心过滤器
+### 1. SecurityContextPersistenceFilter
+1. 请求来临时创建 securityContext 安全上下文信息, 比如根据 sessionId 将已经认证过的信息放入 securityContextHolder
+2. 请求结束时清空 securityContextHolder 中的信息
+
+因此处于第一个和最后一个过滤器
+
+### 2. UsernamePasswordAuthenticationFilter
+将客户端表单提交的用户名和密码封装成 Authentication 对象, 并交由 authenticationManager 完成认证
+
+### 3. AnonymousAuthenticationFilter
+位于身份认证过滤器的最后, 用于给匿名用户一个身份. 比如有些资源是不需要登陆就可以访问的
+
+### 4. ExceptionTranslationFilter
+用于转化在前面过滤链中的异常
+转化意味着没有自己处理, 而是交由 handler 去处理, 比如认证失败委托给 AuthenticationEntryPoint 去处理
+
+### 5. FilterSecurityInterceptor
+FilterSecurityInterceptor 从 SecurityContextHolder 中
+1. 获取 Authentication 对象
+2. 比对用户拥有的权限和资源所需的权限
+
+资源所需的资源可以通过注解声明, FilterSecurityInterceptor 通过委托给 SecurityMetadataSource 通过反射获取
+
+之后委托给 AccessDecisionManager 通过投票来确定是否可以访问, 默认是一票通过, 比如注解 `PreAuthorize("hasAuthority('super')) `
 

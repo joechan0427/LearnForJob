@@ -47,6 +47,7 @@ public static void main(String[] args) throws ExecutionException, InterruptedExc
 
 ThreadPoolExecutor
 ![](https://p0.meituan.net/travelcube/77441586f6b312a54264e3fcf5eebe2663494.png)
+
 构造了一种生产者消费者的模型, 将任务与线程解耦
 线程池主要分成: 1. 任务管理, 2. 线程管理两部分
 
@@ -75,6 +76,10 @@ ThreadPoolExecutor 的状态有
 
 ![](https://p0.meituan.net/travelcube/31bad766983e212431077ca8da92762050214.png)
 
+##### submit 和 execute 的区别
+1. execute()方法用于提交不需要返回值的任务，所以无法判断任务是否被线程池执行成功与否；
+2. submit()方法用于提交需要返回值的任务。线程池会返回一个 Future 类型的对象，通过这个 Future 对象可以判断任务是否执行成功 ，并且可以通过 Future 的 get()方法来获取返回值，get()方法会阻塞当前线程直到任务完成，而使用 get（long timeout，TimeUnit unit）方法则会阻塞当前线程一段时间后立即返回，这时候有可能任务没有执行完。
+
 #### 任务缓冲
 阻塞队列(BlockingQueue)是一个支持两个附加操作的队列。这两个附加的操作是：在队列为空时，获取元素的线程会等待队列变为非空。当队列满时，存储元素的线程会等待队列可用
 ![](https://p1.meituan.net/travelcube/f4d89c87acf102b45be8ccf3ed83352a9497.png)
@@ -82,6 +87,7 @@ ThreadPoolExecutor 的状态有
 可选的阻塞队列:
 ![](https://p0.meituan.net/travelcube/725a3db5114d95675f2098c12dc331c3316963.png)
 
+[如何选择队列](https://blog.hufeifei.cn/2018/08/12/Java/ThreadPoolExecutor%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5--%E5%A6%82%E4%BD%95%E9%80%89%E6%8B%A9%E9%98%9F%E5%88%97/)
 #### 任务申请
 大多数时候, 执行完任务的线程会去阻塞队列获取新的任务, 这部分策略在 `getTask()` 函数里
 ![](https://p0.meituan.net/travelcube/49d8041f8480aba5ef59079fcc7143b996706.png)
