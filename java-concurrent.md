@@ -142,6 +142,12 @@ worker 类中的 run 方法调用了 ThreadPoolExecutor 的 runWorker 方法
 
 ![](https://p0.meituan.net/travelcube/879edb4f06043d76cea27a3ff358cb1d45243.png)
 
+### 常见线程池
+
+### 线程池核心参数配置
+- CPU 密集型任务(N+1)： 这种任务消耗的主要是 CPU 资源，可以将线程数设置为 N（CPU 核心数）+1，比 CPU 核心数多出来的一个线程是为了防止线程偶发的缺页中断，或者其它原因导致的任务暂停而带来的影响。一旦任务暂停，CPU 就会处于空闲状态，而在这种情况下多出来的一个线程就可以充分利用 CPU 的空闲时间。
+- I/O 密集型任务(2N)： 这种任务应用起来，系统会用大部分的时间来处理 I/O 交互，而线程在处理 I/O 的时间段内不会占用 CPU 来处理，这时就可以将 CPU 交出给其它线程使用。因此在 I/O 密集型任务的应用中，我们可以多配置一些线程，具体的计算方法是 2N。
+
 # 线程的生命周期和状态
 Java 线程在运行的生命周期中的指定时刻只可能处于下面 6 种不同状态的其中一个状态
 ![](https://my-blog-to-use.oss-cn-beijing.aliyuncs.com/19-1-29/Java%E7%BA%BF%E7%A8%8B%E7%9A%84%E7%8A%B6%E6%80%81.png)
@@ -154,7 +160,22 @@ Java 线程在运行的生命周期中的指定时刻只可能处于下面 6 种
 ## join
 阻塞到某个线程执行完成, 释放锁 (底层使用 wait), 
 ```java
-t.join();//主要用于等待t线程运行结束
+Thread a = new Thread(){
+    public synchronized void join() {
+        while (isAlive()) {
+            wait(0);
+        }
+    }
+    
+};
+Thread b = new Thread(){
+    public void run() {
+        //主要用于等待a线程运行结束
+        //底层使用 wait
+        //相当于 b 线程拿到 a 线程这个线程对象的锁
+        a.join();
+    }
+};
 ```
 ## yield
 让出当前 cpu, 可能又回到自己, 不释放锁
@@ -180,58 +201,13 @@ t.join();//主要用于等待t线程运行结束
 3. 修饰代码块 (锁住括号里面的对象)
 ==注意: 尽量不要锁住 String, Integer 这类有缓存池的对象==
 
-### 单例模式
-#### 好处
-1. 节省内存, 不会创建多个实例对象
-2. 有些类就应该被设计成单例, 比如打印机, 我们可以有多个打印功能的应用程序, 但是真正向打印机传输数据的类应该是单例的, 以避免两个打印作业同时输出到打印机中
-#### 多种实现
-1. 饿汉式(使用静态代码块或静态变量赋值的形式), 不会有线程安全问题, 因为在类加载阶段便已经创建对象
-2. 懒汉式(在实际运行时才加载)
-一个类只有一个实例对象, 如 Spring 中的 Service, Controller
-```java
-class Singleton {
-    private static volatile Singleton single;
-
-    public static Singleton getSingle() {
-        if (single == null) {
-            synchronized (Singleton.class) {
-                if (single == null) {
-                    single = new Singleton();
-                }
-            }
-        }
-        return single;
-    }
-}
-```
-volatile 修饰的目的:
-    1. 保证可见性, 保证每个线程得到的都是当前内存中的状态
-    2. 保证有序性, 确保 jvm 不会指令重排, 以保证得到的 single 对象一定已经创建好了
-
-3. 静态内部类模式
-```java
-public class SingleTon{
-  private SingleTon(){}
- 
-  private static class SingleTonHoler{
-     private static SingleTon INSTANCE = new SingleTon();
- }
- 
-  public static SingleTon getInstance(){
-    return SingleTonHoler.INSTANCE;
-  }
-}
-```
-此时当 Singleton 被加载进虚拟机时并不会创建实例, 因为静态内部类并没有加载, 而只有当调用 getInstance() 时才会加载, 实现延迟加载
-当getInstance()方法被调用时，SingleTonHoler才在SingleTon的运行时常量池里，把符号引用替换为直接引用，这时静态对象INSTANCE也真正被创建
-
 ### Java 对象头
 对象头包含三部分
-1. markword
+1. **markword**
 存储 hashcode, gc分代年龄, 锁标志, 偏向线程
-2. 类型指针
+2. **类型指针**
 指向对象的类元数据, jvm 通过此指针确定是哪个类的实例
-3. 数组特有的储存长度
+3. **数组特有的储存长度**
 
 对象头
  长度 | 内容 | 说明
@@ -282,7 +258,7 @@ hashcode | gc 分代年龄 | 0 | 01
     1. 如果 epoch < cEpoch, 说明发生过批量重偏向, 直接CAS加偏向锁
     2. 如果 epoch = cEpoch, 竞争锁
 4. 竞争锁得等到全局安全点(safe point，代表了一个状态，在该状态下所有线程都是暂停的), 此时有两个判断
-    1. 持有偏向锁的对象的线程已退出同步代码块, 或者持有锁对象的线程已不存活, 则撤销偏向锁, 恢复到无锁状态(且不能偏向, 最后三位 001)
+    1. 持有偏向锁的对象的线程已退出同步代码块, 或者持有锁对象的线程已不存活, 则撤销偏向锁, 恢复到无锁状态(且不能偏向, 最后三位 001)(==PS:仅对该对象而言, 当同一个类的多个实例变量发生了偏向锁撤销时, 会将类的 cepoch + 1==)
     2. 持有锁对象的线程仍存活且在同步代码块内, 则锁升级为轻量锁, 且该线程仍持有锁(优先把锁对象的对象头指向原持有锁的线程)
 5. (轻量锁) 先在线程的栈帧里赋值当前锁对象的markword, 然后 CAS 替换, 成功则获取到锁, 失败则首先自旋, 当自旋次数到达一定次数进入锁膨胀(或此时再有其他线程争夺锁), 膨胀的重量锁的 monitor 的 owner 将指向持有锁的线程
 6. (重量锁) 此时锁对象的markword将指向monitor对象, 获取不到锁的线程将进入 EntrySet 集合中, 并处于 blocked (阻塞)状态
@@ -308,9 +284,57 @@ hashcode | gc 分代年龄 | 0 | 01
     > Condition是 JDK1.5 之后才有的，它具有很好的灵活性，比如可以实现多路通知功能也就是在一个Lock对象中可以创建多个Condition实例（即对象监视器），线程对象可以注册在指定的Condition中，从而可以有选择性的进行线程通知，在调度线程上更加灵活。 在使用notify()/notifyAll()方法进行通知时，被通知的线程是由 JVM 选择的，用ReentrantLock类结合Condition实例可以实现“选择性通知” ，这个功能非常重要，而且是 Condition 接口默认提供的。而synchronized关键字就相当于整个 Lock 对象中只有一个Condition实例，所有的线程都注册在它一个身上。如果执行notifyAll()方法的话就会通知所有处于等待状态的线程这样会造成很大的效率问题，而Condition实例的signalAll()方法 只会唤醒注册在该Condition实例中的所有等待线程。
 
 # volatile
-通过==缓存一致性协议实现==, 
+通过==缓存一致性协议实现==
+
+## 单例模式
+一个类只有一个实例对象, 如 Spring 中的 Service, Controller
+### 好处
+1. 节省内存, 不会创建多个实例对象
+2. 有些类就应该被设计成单例, 比如打印机, 我们可以有多个打印功能的应用程序, 但是真正向打印机传输数据的类应该是单例的, 以避免两个打印作业同时输出到打印机中
+### 多种实现
+1. 饿汉式(使用静态代码块或静态变量赋值的形式), 不会有线程安全问题, 因为在类加载阶段便已经创建对象
+2. 懒汉式(在实际运行时才加载)
+
+```java
+class Singleton {
+    private static volatile Singleton single;
+
+    public static Singleton getSingle() {
+        if (single == null) {
+            synchronized (Singleton.class) {
+                if (single == null) {
+                    single = new Singleton();
+                }
+            }
+        }
+        return single;
+    }
+}
+```
+volatile 修饰的目的:
+    1. 保证可见性, 保证每个线程得到的都是当前内存中的状态
+    2. 保证有序性, 确保 jvm 不会指令重排, 以保证得到的 single 对象一定已经创建好了
+
+3. 静态内部类模式
+```java
+public class SingleTon{
+  private SingleTon(){}
+ 
+  private static class SingleTonHoler{
+     private static SingleTon INSTANCE = new SingleTon();
+ }
+ 
+  public static SingleTon getInstance(){
+    return SingleTonHoler.INSTANCE;
+  }
+}
+```
+此时当 Singleton 被加载进虚拟机时并不会创建实例, 因为静态内部类并没有加载, 而只有当调用 getInstance() 时才会加载, 实现延迟加载
+当getInstance()方法被调用时，SingleTonHoler才在SingleTon的运行时常量池里，把符号引用替换为直接引用，这时静态对象INSTANCE也真正被创建
+
 ## CPU 缓存模型
 CPU 缓存是为了解决 CPU 处理速度和内存处理速度不对等的问题。
+
 工作方式:
 先从内存复制数据到 CPU 缓存, 读取直接从缓存读取, 运算结束再写回内存
 
@@ -380,12 +404,14 @@ RW: 同上, 状态不变
 缓存的一致性消息传递是要时间的，这就使其切换时会产生延迟。当一个缓存被切换状态时其他缓存收到消息完成各自的切换并且发出回应消息这么一长串的时间中CPU都会等待所有缓存响应完成。可能出现的阻塞都会导致各种各样的性能问题和稳定性问题。
 #### store buffer
 为了避免这种CPU运算能力的浪费，Store Bufferes被引入使用。处理器把它想要写入到主存的值写到缓存，然后继续去处理其他事情。当所有失效确认（Invalidate Acknowledge）都接收到时，数据才会最终被提交。
+
 但又会引发其他风险
 1. 就是处理器会尝试从存储缓存（Store buffer）中读取值，但它还没有进行提交。这个的解决方案称为Store Forwarding，它使得加载的时候，如果存储缓存中存在，则进行返回。
 2. 什么时候完成提交, 没有保证
 
 ```java
-alue = 3；
+value = 3；
+
 void exeToCPUA(){
   value = 10;
   isFinsh = true;
@@ -545,7 +571,7 @@ static final class Node {
     }
     ```
 2. t2 进来 tryAcquire, 
-    1. 由于 t1 已经建立了队列并且获取到资源, 所有 t2 获取资源的两种条件都不满足, 
+    1. 由于 t1 已经获取到资源(state > 0 && currentThread != t2), 所以 t2 获取资源的两种条件都不满足, 
     2. 但由于此时 t2 的前序节点是 head, 因此会先自旋一次尝试获得资源, 
     3. 修改前节点的 waitStatus 为 signal , 再自旋一次, 
     4. 如果还拿不到锁, 则进入阻塞状态等待
@@ -678,6 +704,8 @@ final boolean nonfairTryAcquire(int acquires) {
     final Thread current = Thread.currentThread();
     int c = getState();
     if (c == 0) {
+        // 少了一个判断是否需要排队的操作
+        // 只要当前 state 为空就直接尝试上锁
         if (compareAndSetState(0, acquires)) {
             setExclusiveOwnerThread(current);
             return true;

@@ -49,7 +49,7 @@ a = a+b // 会变成 a = (int)a+(int)b, 会报错
 0. 通过 `jps` 查到进程的 pid
 1. 通过 `jstat -gc pid` 查看 gc 情况, 如果 full gc 次数过多, 则有可能发生内存泄漏
   ![](https://upload-images.jianshu.io/upload_images/6918995-bad5d58eeb218c8c.png)
-  该指令能看出 s0, s1, eden 区, old 区, 方法区的分配情况, 使用情况, Ygc, full gc 时间, 次数
+  该指令能看出 s0, s1, eden 区, old 区, 方法区的分配情况(c)和使用情况(u), Ygc, full gc 时间, 次数
 2. 可以通过 `jstack` 查看线程数量, 线程过多也可能造成内存使用过大
 2. 通过 `jmap -dumb:format=b,file=xxx.log pid` 保存堆现场
 3. 下载堆文件, 通过工具解决, 比如 MAT, 可以选择 memory leak suspect
@@ -179,7 +179,7 @@ Swap: 32764556k total,        0k used, 32764556k free,  3612636k cached
 top - 14:06:23 up 70 days, 16:44,  2 users,  load average: 1.25, 1.32, 1.35
 ```
 load average: 1.15, 1.42, 1.44
-表示过去 1, 5, 15 分钟的负债情况, 如过去15 分钟有 1.44个进程占用 cpu
+表示过去 1, 5, 15 分钟的负载情况, 如过去15 分钟有 1.44个进程占用 cpu
 2. **第二行, 进程相关**
 ```shell
 Tasks: 206 total,   1 running, 205 sleeping,   0 stopped,   0 zombie
@@ -419,7 +419,11 @@ HMACSHA256(
 
 ### sql 编写优化步骤:
 1. 避免所有字段都返回
+2. 避免在索引列进行函数运算
 
+### 建立索引的注意事项
+1. 区分度高的在前面
+2. ==最左前缀匹配原则==，非常重要的原则，mysql会一直向右匹配直到遇到范围查询(>、<、between、like)就停止匹配，比如a = 1 and b = 2 and c > 3 and d = 4 如果建立(a,b,c,d)顺序的索引，d是用不到索引的，如果建立(a,b,d,c)的索引则都可以用到，a,b,d的顺序可以任意调整
 
 ## redis
 

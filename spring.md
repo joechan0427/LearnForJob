@@ -99,6 +99,93 @@ public class ProxyTest {
 # spring 启动过程
 ![](https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a5dcb4ca2d084864a6a90e0099688fe2~tplv-k3u1fbpfcp-zoom-1.image)
 
+## ioc 容器的启动过程
+refresh 方法, 叫 refresh 是因为在修改配置文件后, 可以动态调用该方法刷新容器, ==主要用于对 beanDefinition 的载入, 以及对容器自身一些生命周期和管理工作==
+
+beanDefinition 的载入
+1. resource 定位, 包括 xml, 注解
+2. beanDefinition 的装载和解析
+    1. 根据 xml 资源获取相应的 document 对象
+    2. 将 document 对象根据标签 `<import>, <bean>` 转换成 beanDefinition 对象
+3. beanDefinition 注册, 将得到的 beanDefinition 注入一个 hashMap
+
+此时 IOC 容器得到了创建 bean 所需要的配置信息. ==注意此时还没有真正的创建 bean==
+
+
+## bean 的生命周期
+![](https://cdn.nlark.com/yuque/0/2019/png/181910/1549528833203-01b9a061-1535-454c-8e9c-e31cf3c8e06a.png?x-oss-process=image%2Fwatermark%2Ctype_d3F5LW1pY3JvaGVp%2Csize_10%2Ctext_eXVsb25nc3Vu%2Ccolor_FFFFFF%2Cshadow_50%2Ct_80%2Cg_se%2Cx_10%2Cy_10)
+
+![](https://pic2.zhimg.com/v2-c7469843ef8142962a42df0a9ba21505_r.jpg)
+
+### bean 的诞生
+1. 显式调用 getBean() 方法
+2. IOC 容器隐式调用 getBean() 方法, 当 bean 配置非懒加载时. 单例模式默认非懒加载. 那么当 ioc 容器初始化后, 会隐式调用 getBean() 方法
+
+### bean 的产生
+1. 向容器设置指定 bean 正在创建的 flag
+2. 从容器获得 beanDefinition
+3. ==检查 bean 的依赖(?????)==
+4. 根据作用域执行不同的创建方法
+    1. 单例模式
+        1. getSingleton(beanName, singletonFactory), 如果不存在会调用 createBean()
+        2. 放入一级缓存
+    2. 原型模式
+        1. createBean
+
+#### createBean
+1. 实例化 bean, 通过反射调用构造方法, 此时未注入属性
+2. 添加一个单例工厂到三级缓存(singletonFactory) 
+3. 进行属性注入, 此时如果属性是一个 bean 会递归调用 getBean() 方法
+4. 初始化 bean
+    1. 如果实现某个 aware 接口, 会调用对应方法
+    2. 前置处理器, 在 bean 初始化前后添加自己的逻辑
+    3. 调用 init 方法
+    4. 后置处理器. ==aop 替换对象在这个步骤==
+5. 注册 bean 到 ioc 单例池容器
+
+[生命周期](https://www.jianshu.com/p/1dec08d290c1)
+
+## 解决循环依赖问题
+A拥有B的属性，B拥有A的属性
+
+spring在单例情况下默认支持循环引用。
+
+![](https://pic2.zhimg.com/80/v2-c3b422fe935984b9705724b9c01496cd_1440w.jpg)
+
+![](./java-imgs/circledependency.jpg)
+1. 获取A
+    1. getBean(), 进入getSingleton(beanName), 在三个缓存池里都找不到A, 进入2
+    2. 获取并创建 bean, getSingleton(beanName, singletonFactory), 先创建 bean, 然后添加工厂到三级缓存
+    3. 填充属性, 发现B
+2. 获取B
+    同上
+3. 获取A
+    1. getBean(), 进入getSingleton(beanName), 在三级缓存找到工厂A, 调用getObject() 方法, 将得到的半成品放进半成品池子, 并将工厂A 从三级缓存中移去
+    2. 返回2
+
+**为什么不是一级缓存**
+因为 ioc 容器的注册是在 bean 创建的最后一步, 也就是说实例化, 注入属性, 初始化之后再放进 ioc 容器, 保证 ioc 容器里的对象都是完整的. 如果是一级缓存, 也就是把当前不完整的 A 放进 ioc 容器, 理论上可以, 但违背了 ioc 容器里的对象都是完整的原则, 并且有可能因为后续的代理对象导致 A 对象空指针
+
+**为什么不是二级缓存?**
+因为如果把单例工厂去掉, 即把实例化后的对象放入半成品池子.
+==因为单例工厂不仅是会实例化对象, 而且会进行后置处理, 可能还会返回的是代理对象==
+比如: ==把半成品 A 放入二级缓存, 然后 B 注入属性时得到 半成品 A, 但 A 在后置处理器中返回了代理对象, 此时就会得到 ioc 容器里的 A 是代理对象, 而 B 对象里的 A 是非代理对象==
+
+而三级缓存的做法是, ==当我们遇到循环依赖时, B 从三级缓存拿到 A 的单例工厂bean, 调用其 getObject() 方法, 会调用各个后置处理器的 getEarlyReference() 方法, 此时返回的就是代理对象了==
+
+[参考](https://www.yisu.com/zixun/317220.html)
+
+**为什么要包装一层ObjectFactory对象**
+如果创建的Bean有对应的代理，那其他对象注入时，注入的应该是对应的代理对象；但是Spring无法提前知道这个对象是不是有循环依赖的情况，而正常情况下（没有循环依赖情况），==Spring都是在创建好完成品Bean之后才创建对应的代理==。这时候Spring有两个选择：
+1. 不管有没有循环依赖，都提前创建好代理对象，并将代理对象放入缓存，出现循环依赖时，其他对象直接就可以取到代理对象并注入。
+2. 不提前创建好代理对象，在出现循环依赖被其他对象注入时，才实时生成代理对象。这样在没有循环依赖的情况下，Bean就可以按着Spring设计原则的步骤来创建。
+
+Sping选择了第二种，如果是第一种，就会有以下不同的处理逻辑：
+1. 在提前曝光半成品时，直接执行getEarlyBeanReference创建到代理，并放入到缓存earlySingletonObjects中。
+2. 那就不需要通过ObjectFactory来延迟执行getEarlyBeanReference，也就不需要singletonFactories这一级缓存。
+
+如果要使用二级缓存解决循环依赖，意味着Bean在构造完后就创建代理对象，这样违背了Spring设计原则。Spring结合AOP跟Bean的生命周期，是在Bean创建完全之后通过AnnotationAwareAspectJAutoProxyCreator这个后置处理器来完成的，在这个后置处理的postProcessAfterInitialization方法中对初始化后的Bean完成AOP代理。如果出现了循环依赖，那没有办法，只有给Bean先创建代理，但是没有出现循环依赖的情况下，设计之初就是让Bean在生命周期的最后一步完成代理而不是在实例化后就立马完成代理。
+
 ## 依赖注入
 通过引入IOC容器，利用依赖关系注入的方式，实现对象之间的解耦，对象之间互相感受不到对方的存在（因为你不需要显式地声明new）
 
@@ -144,12 +231,6 @@ public class MyBeanFactoryPostProcessor implements BeanFactoryPostProcessor {
 ![](https://pic2.zhimg.com/80/v2-dc8000e96551247ddb182edc8f875e1f_1440w.jpg?source=1940ef5c)
 
 
-## bean 的生命周期
-![](https://cdn.nlark.com/yuque/0/2019/png/181910/1549528833203-01b9a061-1535-454c-8e9c-e31cf3c8e06a.png?x-oss-process=image%2Fwatermark%2Ctype_d3F5LW1pY3JvaGVp%2Csize_10%2Ctext_eXVsb25nc3Vu%2Ccolor_FFFFFF%2Cshadow_50%2Ct_80%2Cg_se%2Cx_10%2Cy_10)
-
-![](https://pic2.zhimg.com/v2-c7469843ef8142962a42df0a9ba21505_r.jpg)
-
-[生命周期](https://www.jianshu.com/p/1dec08d290c1)
 ## bean 的作用域
 使用 `scope` 注解里的`scopeName`配置
 
@@ -176,38 +257,6 @@ beanFactory 本质上是一个容器, sping IOC 容器的核心接口. 职责是
 
 **使用场景:**
 一般情况下，Spring通过反射机制利用`<bean>`的class属性指定实现类实例化Bean，在某些情况下，实例化Bean过程比较复杂，如果按照传统的方式，则需要在`<bean>`中提供大量的配置信息。配置方式的灵活性是受限的，这时采用编码的方式可能会得到一个简单的方案
-
-## 解决循环依赖问题
-A拥有B的属性，B拥有A的属性
-
-spring在单例情况下默认支持循环引用。
-
-![](./java-imgs/circledependency.jpg)
-1. 获取A
-    1. getBean(), 进入getSingleton(beanName), 在三个缓存池里都找不到A, 进入2
-    2. 获取并创建 bean, getSingleton(beanName, singletonFactory), 先创建 bean, 然后添加工厂到三级缓存
-    3. 填充属性, 发现B
-2. 获取B
-    同上
-3. 获取A
-    1. getBean(), 进入getSingleton(beanName), 在三级缓存找到工厂A, 调用getObject() 方法, 将得到的半成品放进半成品池子, 并将工厂A 从三级缓存中移去
-    2. 返回2
-
-**为什么不是二级缓存?**
-因为如果把单例工厂去掉, 即把实例化后的对象放入半成品池子.
-==因为单例工厂不仅是会实例化对象, 而且会进行后置处理, 可能还会返回的是代理对象==
-同时, 由于此时并未填充属性, 所以不能自行进行后置处理(因为可能某些操作依赖与属性的设置)
-
-**为什么要包装一层ObjectFactory对象**
-如果创建的Bean有对应的代理，那其他对象注入时，注入的应该是对应的代理对象；但是Spring无法提前知道这个对象是不是有循环依赖的情况，而正常情况下（没有循环依赖情况），==Spring都是在创建好完成品Bean之后才创建对应的代理==。这时候Spring有两个选择：
-1. 不管有没有循环依赖，都提前创建好代理对象，并将代理对象放入缓存，出现循环依赖时，其他对象直接就可以取到代理对象并注入。
-2. 不提前创建好代理对象，在出现循环依赖被其他对象注入时，才实时生成代理对象。这样在没有循环依赖的情况下，Bean就可以按着Spring设计原则的步骤来创建。
-
-Sping选择了第二种，如果是第一种，就会有以下不同的处理逻辑：
-1. 在提前曝光半成品时，直接执行getEarlyBeanReference创建到代理，并放入到缓存earlySingletonObjects中。
-2. 那就不需要通过ObjectFactory来延迟执行getEarlyBeanReference，也就不需要singletonFactories这一级缓存。
-
-如果要使用二级缓存解决循环依赖，意味着Bean在构造完后就创建代理对象，这样违背了Spring设计原则。Spring结合AOP跟Bean的生命周期，是在Bean创建完全之后通过AnnotationAwareAspectJAutoProxyCreator这个后置处理器来完成的，在这个后置处理的postProcessAfterInitialization方法中对初始化后的Bean完成AOP代理。如果出现了循环依赖，那没有办法，只有给Bean先创建代理，但是没有出现循环依赖的情况下，设计之初就是让Bean在生命周期的最后一步完成代理而不是在实例化后就立马完成代理。
 
 ## 事务传播行为
 事务传播行为（propagation behavior）指的就是当一个事务方法被另一个事务方法调用时，这个事务方法应该如何进行。
@@ -331,6 +380,21 @@ Sping选择了第二种，如果是第一种，就会有以下不同的处理逻
 [自动配置](https://segmentfault.com/a/1190000030685746)
 
 ![](https://afoo.me/posts/images/how-spring-boot-autoconfigure-works.png)
+
+分为 bean 的自动配置和属性的自动配置
+### bean 的自动配置
+也就是我们没有 new 而是直接导入一个 starter 包就可以使用
+
+1. 在启动类上有 @springbootapplication (标注这是一个 springboot应用)的注解 
+2. 这个注解有绑定一个开启自动配置的注解
+3. 这个注解 import (导入)了一个扫描类
+4. 这个扫描类会去扫描各个 jar 包下的 MEAT-INF/spring.factories 的文件
+5. 这些文件都有一个 key 是相同的 EnableAutoConfiguration, 而 value 是一些自动配置类
+6. spring 会找到这些自动配置类, 然后注入里面标注了 bean 注解的对象, 每个 xxAutoConfiguration 类都可以选择性的生效, 通过 @Conditional 实现
+
+
+### 属性的自动配置
+通过后置处理器, 在创建 bean 的时候, 扫描其是否有 configurationProperties 注解, 他会解析注解的 value, 然后和配置文件的对应 key 的值绑定起来
 
 # spring security
 [参考](https://www.cnkirito.moe/categories/Spring-Security/)
