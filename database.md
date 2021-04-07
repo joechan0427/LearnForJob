@@ -115,6 +115,21 @@ UPDATE t SET x="c" WHERE id=1;
 
 如果不满足, 需要在 Undo 日志中寻找上一个 TRX_ID, 再次重复上述操作
 
+==已提交读隔离级别下的事务在每次查询的开始都会生成一个独立的ReadView,而可重复读隔离级别则在第一次读的时候生成一个ReadView，之后的读都复用之前的ReadView==
+![](https://pic3.zhimg.com/80/v2-f52d8559ba58256df25735e761fd7ae2_1440w.jpg)
+
+考虑这样的场景
+1. 记录 a=1, trx=100
+2. 开启事务1 trx = 101, 修改 a=2 之后未提交
+此时记录a=2, trx=101, undo log 的上一条记录是 a=1, trx=100
+3. 开启事务2 trx=102, 读取 a,
+获得此时的 readview, 有 trx=101 和 102, 此时 a 的最新 trx = 101, 且在 readview 中, 因此说明未提交的事务, 不可见, 返回上一条 a = 1
+4. 事务1 提交
+5. 事务2 读取 a
+**提交读**: 新建一个 readview, trx = [102], a 的最新 trx = 101, 小于 102, 可读, 得到 a=2
+**不可重复读**: 使用第一次的 readview, trx = [101, 102], 因此 a = 2 还是不可读, 返回 a = 1
+
+
 ### 快照读与当前读
 1. 快照读
 MVCC 的 select 操作是快照中的数据, 不需要加锁
@@ -220,6 +235,14 @@ MySQL 的基本存储结构是页(==16KB==)
     ```
 5. 将选择性强的字段放在联合索引的前面
 选择性: `count(distinct col)/count(*)` 选择性越高的索引价值越大
+
+#### mysql 优化索引的情况
+1. 索引下推
+比如我们有一个联合索引 (name, age), 当我们查询`where name = "a%" and age = 20`
+如果没有索引下推(mysql 5.6 之前), 则在查询索引时会直接忽略 age 这个字段, 找到所有的`name = a%` 的索引, 然后逐次回表查看 age 是否等于 20
+![](https://pic3.zhimg.com/80/v2-04b4a496ab53eccc5feba150bf9fb7ea_1440w.jpg)
+在有索引下推的情况下, 在索引查找到 `name="a%"` 的索引时, 会直接先查看 age 是否为 20, 如果否, 则直接忽略, 查找下一条索引
+![](https://pic1.zhimg.com/80/v2-211aaba883221c81d5d7578783a80764_1440w.jpg)
 
 ## MySQL 执行一条 sql 语句的过程
 ![](https://static001.geekbang.org/resource/image/0d/d9/0d2070e8f84c4801adbfa03bda1f98d9.png)

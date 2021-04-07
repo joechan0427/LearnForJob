@@ -1,10 +1,10 @@
 # 使用线程
 - 继承 Thread 类
 - 实现 Runnable 接口
-- 实现 Callable 接口
+- 实现 Callable 接口 (带返回值)
 - 使用线程池
 
-实现两个接口的类智能当作一个可在线程中执行的任务, 不是真正意义上的线程, 最后还是得通过 Thread 类来调用
+实现两个接口的类只能当作一个可在线程中执行的任务, 不是真正意义上的线程, 最后还是得通过 Thread 类来调用
 ## 实现 Callable 接口
 与 Runnable 相比, Callable 可以有返回值, 线程池里, 返回值通过 FutureTask 进行封装
 
@@ -21,6 +21,21 @@ public static void main(String[] args) throws ExecutionException, InterruptedExc
     thread.start();
     System.out.println(ft.get());
 }
+```
+
+Callable 与 Runnable 一样不能直接运行, 直接借助 Thread 类, 但是 Thread 类没有提供直接运行 Callable 接口的方法, 我们需要借助 FutureTask
+
+```java
+//创建FutureTask
+FutureTask<String> futureTask = new FutureTask<>(callable);
+```
+
+FutureTask 是一个既实现 Future, 又实现 Runnable 接口的类, 所以本质还是一个 Runnable 
+```java
+//创建线程
+Thread thread = new Thread(future);
+//启动线程      
+thread.start();
 ```
 
 ## 继承 Thread 类

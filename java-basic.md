@@ -529,3 +529,26 @@ T extends A
 
 1. List属于原始类型，它不会进行安全类型检查，也不存在泛型类型的限制g。
 2. List&lt;Object&gt;泛型为Object，它会进行安全类型检查，而且受泛型的限制。
+
+# 注解
+一种代码级别的说明. 在类, 属性, 方法上的一个附属品, 本身没有作用, ==根据外部程序解析发挥作用==. 例如编译时, 会检查 @Override, @SuppressWarning, @Deprecated
+
+==本质是一个继承 Annotation 的接口==
+
+作用分类:
+1. 编写文档
+2. 编译检查: @Override, @SuppressWarning, @Deprecated
+3. 代码分析: 利用反射对代码进行分析
+
+在使用反射时, Class、Method、Field对象都有个getAnnotation()，可以获取各自位置的注解信息, 注意保留策略得是 runtime
+
+属性的数据类型
+1. 8种基本类型
+2. String
+3. Class
+4. 枚举
+5. 注解
+6. 以上的一维数组
+
+
+
