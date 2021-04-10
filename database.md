@@ -257,7 +257,7 @@ MySQL 的基本存储结构是页(==16KB==)
 
 ### binlog 与 redolog
 #### binlog
-binlog 用于记录数据库的写操作, 以==二进制的形式存放在硬盘中==, 属于 mysql 的逻辑日志, 由 server 层进行记录, 使用任何存储引擎的 mysql 数据库都会记录 binlog 日志
+binlog 用于记录数据库的写操作, 以==二进制的形式存放在硬盘中==, 属于 mysql 的==逻辑日志==, 由 server 层进行记录, 使用任何存储引擎的 mysql 数据库都会记录 binlog 日志
 > 逻辑日志：可以简单理解为记录的就是sql语句
 
 > 物理日志：因为mysql数据最终是保存在数据页中的，物理日志记录的就是数据页变更
@@ -284,25 +284,27 @@ binlog 用于记录数据库的写操作, 以==二进制的形式存放在硬盘
 > 在 MySQL 5.7.7之前，默认的格式是STATEMENT，MySQL 5.7.7之后，默认值是ROW。日志格式通过binlog-format指定
 
 #### redo log
-为了保证事务的持久性, innoDB 使用了 redo log, 为什么不每次 commit 都落盘呢
+为了保证事务的==持久性==, innoDB 使用了 redo log, 为什么不每次 commit 都落盘到数据表呢
 1. 因为 innoDB 是以页为单位与硬盘做交互, 如果因为一页的几个字节而进行一次 I/O, 将造成浪费
 2. 如果涉及多个页, 将造成随机I/O
 
 因此 ==InnoDB== 设计 redo log 这个==物理日志==, ==记录事务对数据页的修改==, (文件更小且是==顺序I/O==)
+写日志虽然也是写磁盘，但是它是顺序写，相比随机写开销更小，能提升语句执行的性能
 
 redo log 包括两部分: 
 1. 内存中的缓存(redo log buffer) 
 2. 磁盘上的日志文件 (redo log file)
 
-==WAL(write-ahead logging):== 每个事务提交, 先将记录写入缓存, 后续某个节点再写到日志文件.
+==WAL(write-ahead logging) 日志先行:== 每个事务提交, 先将记录写入缓存, 后续某个节点再写到日志文件.
 
 将 buffer 写到 redo log 的时机有以下选择
 |参数值|含义|
 |-|-|
 |0（延迟写）==默认值==|事务提交时不会将redo log buffer中日志写入到os buffer，而是每秒写入os buffer并调用fsync()写入到redo log file中。也就是说设置为0时是(大约)每秒刷新写入到磁盘中的，当系统崩溃，会丢失1秒钟的数据。|
-|1（实时写，实时刷）|事务每次提交都会将redo log buffer中的日志写入os buffer并调用fsync()刷到redo log file中。这种方式即使系统崩溃也不会丢失任何数据，但是因为每次提交都写入磁盘，IO的性能较差。|
+|1（实时写，实时刷）==建议==|事务每次提交都会将redo log buffer中的日志写入os buffer并调用fsync()刷到redo log file中。这种方式即使系统崩溃也不会丢失任何数据，但是因为每次提交都写入磁盘，IO的性能较差。|
 |2（实时写，延迟刷）|每次提交都仅写入到os buffer，然后是每秒调用fsync()将os buffer中的日志写入到redo log file|
 
+==建议: 双一, 即 redo log 和 binlog 的落盘时机都置为1==
 ##### redo log 记录形式
 由于 redo log 记录的是数据页的变更, 因此不需要全部保留, 实际上采用的是==大小固定, 循环写入==的方式, 每个文件 1GB
 
@@ -324,7 +326,7 @@ write pos表示redo log当前记录的LSN(逻辑序列号)位置，check point�
 |**使用场景**|崩溃恢复|主从复制和数据恢复
 
 ##### undo log
-用于实现原子性, 其中记录每条写 sql 语句的反操作, 如 insert 语句, 在 undo 日志中是一条 delete 语句, 可以通过执行来达到回滚, 是 MVCC 的关键数据结构
+用于实现==原子性==, 其中记录每条写 sql 语句的反操作, 如 insert 语句, 在 undo 日志中是一条 delete 语句, 可以通过执行来达到回滚, 是 MVCC 的关键数据结构
 
 ### 查询语句
 ```sql
@@ -338,11 +340,13 @@ select * from student  A where A.age='18' and A.name='张三';
 ```sql
 update student A set A.age='19' where A.name='张三';
 ```
+![](https://mmbiz.qpic.cn/mmbiz_jpg/4g5IMGibSxt5NE6forHc1x4yniarSIVe4MJ5iaYp2XqPic9ib7pC1PTFBzdoTKWhgkNkoIJ2dVYGpiaqLmfaJn49rATw/640?wx_fmt=jpeg&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
 - 先查询到张三这一条数据，如果有缓存，也是会用到缓存。
 - 然后拿到查询的语句，把 age 改为19，然后调用引擎API接口，写入这一行数据，InnoDB引擎把数据保存在内存中，同时记录redo log，此时redo log进入prepare状态，然后告诉执行器，执行完成了，随时可以提交。
 - 执行器收到通知后记录binlog，然后调用引擎接口，提交redo log 为提交状态。
 
 #### 两阶段提交
+![](https://cdn.nlark.com/yuque/0/2021/png/181910/1611294096654-a805a9de-3f14-44de-bb0c-cb344b40893c.png)
 ![](https://img2020.cnblogs.com/blog/1861307/202009/1861307-20200922152056410-1828606460.png)
 浅色为 InnoDB 引擎执行, 深色为 server 执行
 
@@ -353,6 +357,8 @@ update student A set A.age='19' where A.name='张三';
     2. redo log 只有 prepare 标识
         1. binlog 完整, 提交
         2. binlog 不完整, 回滚
+
+
 
 如何判断 binlog 完整?
 - statement 格式, 会有 commit 标识

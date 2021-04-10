@@ -33,6 +33,25 @@ a = a+b // 会变成 a = (int)a+(int)b, 会报错
 小数为首位符号位,然后将整数和小数分别表示出来,将小数点移到第一个1的右边,左移为正,右移为负,将移位数加127后放入30到23位,剩下的位数放此时小数点所在的位置的右边23位
 
 # java 并发
+## 如何优化多线程上下文切换
+频繁上下文切换原因
+1. 线程数过多
+2. 频繁阻塞, 导致时间片未用完而切换上下文
+3. 垃圾回收, 因为需要 stw
+
+**优化**
+1. 合理设置线程数量
+2. 减少垃圾回收次数
+3. 优化锁竞争
+  3.1 减少锁持有的时间
+  即将一些与锁无关的代码移除同步代码块
+  3.2 降低锁的粒度
+  比如 concurrentHashMap 1.8 将锁粒度减小使其并发度提高
+  3.3 乐观锁代替
+  3.4 优化 wait/notify
+
+
+
 ## 线程池的核心参数有哪些？
 1. 核心线程数
 2. 最大线程数
@@ -81,6 +100,50 @@ stw 时间 比 minor gc 长, 一般是 10 倍以上
 
 
 # 网络
+## traceroute
+1. 用于查看到目标 ip 所经过的路由器
+利用 icmp 协议和 ip 报文头部的 ttl 实现, 第一个报文把 ttl 设置为 1, 则第一个路由器就会返回 icmp 超时差错报文, 第二个为 2 ...
+2. 确定路径的MTU
+## 为什么快重传要是在 3 次相同的 ack 之后
+1. 一次是正常到达
+2. 两次可能是乱序, 也可能是丢包
+3. 三次则是丢包的概率比较大
+
+比如发送 2,3,4,5 四个包, 如果按序到达服务端应该返回 ack(6)
+如果 3 先到达, 服务端会发送 ack(2)
+如果之后是 4, 服务端会第二次发送 ack(2)
+而 2 在没丢包情况下比 5 还要慢到达的概率已经很小了
+
+## socket 网络编程
+[参考](https://blog.csdn.net/vipshop_fin_dev/article/details/102966081)
+![](https://upload-images.jianshu.io/upload_images/206633-4b2d8622b6d9d48d.png?imageMogr2/auto-orient/strip|imageView2/2/w/696/format/webp)
+![](https://img-blog.csdnimg.cn/20191111201405457.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3ZpcHNob3BfZmluX2Rldg==,size_16,color_FFFFFF,t_70)
+1. 服务端开启 socket
+2. 服务端将 socket 与端口绑定
+3. 服务端循环监听该端口
+4. 客户端建立tcp连接
+5. 客户端发送数据
+6. 客户端 close
+
+服务端在 java 中实现
+```java
+Socket socket = new Socket(8080);
+while (true) {
+  socket.accept();//阻塞的
+  // 利用线程池去与不同的客户端通信
+  BufferedReader bufferedReader =new BufferedReader(new InputStreamReader(socket.getInputStream(),"UTF-8"));
+}
+```
+
+客户端在 java 的实现
+```java
+Socket socket = new Socket("127.0.0.1", "8080");
+BufferedWriter bufferedWriter =new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+```
+
+## 长连接短连接
+1. 长连接才可以实现服务端推送, 否则服务端不知道客户端ip的情况下不能主动与客户端通信
+
 ## 301 
 ![](https://img-blog.csdnimg.cn/img_convert/6acb5a0292608eb656a6aca0ea30d97e.png)
 
@@ -411,6 +474,21 @@ HMACSHA256(
 
 
 # 数据库
+
+## 为什么不使用 hash 索引
+1. hash 索引不支持遍历
+2. hash 索引不支持排序
+3. hash 索引不支持部分索引, 例如有联合索引 (a, b, c), hash 索引只能取三者做 hash, 当我们的 sql 语句只有 a 和 b 时, 不能使用到 hash 索引
+4. 当数据量大时, 会增加 hash 冲突的概率
+
+## 递归 sql
+[sql](https://zhuanlan.zhihu.com/p/58563707)
+
+## MyISAM 和 InnoDb 的区别
+1. MyISAM 不支持事务, InnoDB 支持事务
+2. MyISAM 锁粒度最小是表锁, 并发度较小, 而 InnoDB 最小是行锁, 还区分读锁和写锁, 为了进一步提高并发还引入了 MVCC
+3. MyISAM 是非聚集索引, InnoDB 是聚集索引. 因此 InnoDB 索引即数据, 必须要有主键, 主键不宜过大, 否则其他辅助索引也会随之增大(因为辅助索引的叶子数据存储的是主键), 同时主键建议递增, 已避免主键索引需要频繁变动
+
 ## 数据库 delete 和TRUNCATE区别
 - delete：删除表的内容，表的结构存在，索引定义还在，可以回滚恢复；
 - drop：删除表内容和结构，释放空间，没有备份表之前要慎用；
@@ -551,6 +629,28 @@ A 执行了超过设定的 key 存活时间, 此时锁已被 B 拿去, 此时 A,
 `keys pattern`(如 `keys aa*`)
 但该命令是阻塞的且返回所有符合 pattern 的 keys, 可以使用 scan, 通过游标分步进行的，分次进行不会阻塞线程
 `scan 游标 [MATHCH pattern] [COUNT cnt]`, 如`scan 0 MATCH aa* COUNT 11`
+
+# Linux
+## 远程拷贝命令
+`scp <-r>(可选,递归复制) 源文件位置 目标文件位置`
+例如:
+`scp root@1.1.1.1:/opt/test /opt`
+从远程 ip 1.1.1.1 处使用 root 登陆复制 /opt/test 文件到本地的 /opt 文件
+命令输入后需要输入密码, 如果不指定用户名则需要输入用户名和密码
+
+## 统计一个文件里, hello 出现的行数
+grep "hello" file | wc -l
+
+wc (word count)命令
+- -c 统计字节数
+- -l 统计行数
+- -m 统计字符数
+- -w 统计word数, 即以空格, 跳格(tab), 换行分隔开的字符串
+
+## 查看进程下的线程情况
+`ps -T -p <pid>`
+或者
+`top -H -p <pid>`
 
 # spring 
 ## @Autowired和@Resource的区别是什么？

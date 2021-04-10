@@ -1497,8 +1497,10 @@ public class StaticObjTest {
     - 变形2 ： XxBuilder/XxoxFactory的静态方法
 - Class的newInstance（）：反射的方式，只能调用空参的构造器，权限必须是public
 - Constructor的newInstance（Xxx）：反射的方式，可以调用空参、带参的构造器，权限没有要求
-- 使用clone（） ：不调用任何构造器，当前类需要实现Cloneable接口，实现clone（）
+- 使用clone（） ：不调用任何构造器，当前类需要实现Cloneable接口，可选: 实现clone(), 需要 jvm 去 clone, 属于浅拷贝, 如果不实现 cloneable 接口而去调用 clone() 方法会抛异常
+[clone - 失败的设计](https://www.zhihu.com/question/52490586)
 - 使用反序列化：从文件中、从网络中获取一个对象的二进制流
+    需要实现 Serialable 接口
 - 第三方库Objenesis
 
 #### 1.2 创建对象的步骤
