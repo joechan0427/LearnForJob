@@ -35,7 +35,7 @@
 19. 分库分表
 21. 命令行
 22. 建库注意事项
-
+23. ==缓存更新一致性==
 
 ### 计网
 18. ping
@@ -48,3 +48,9 @@
 3. ~~查看线程~~
 4. ~~长连接短连接~~
 5. ~~网络编程~~
+
+### 容器
+[docker](https://zhuanlan.zhihu.com/p/137082437)
+docker 与虚拟机
+[docker 与 k8s](https://www.jianshu.com/p/2de643caefc1)
+[腾讯k8s](https://zhuanlan.zhihu.com/p/292081941)

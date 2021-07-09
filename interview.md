@@ -478,7 +478,9 @@ HMACSHA256(
 
 
 # 数据库
-
+## 分库分表
+[分库分表](https://zhuanlan.zhihu.com/p/84224499)
+[美团分库分表](https://tech.meituan.com/2016/11/18/dianping-order-db-sharding.html)
 ## 为什么不使用 hash 索引
 1. hash 索引不支持遍历
 2. hash 索引不支持排序
