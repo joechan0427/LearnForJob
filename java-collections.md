@@ -154,7 +154,7 @@ HashMap 允许插入键为 null 的键值对。但是因为无法调用 null 的
 ![](https://upload-images.jianshu.io/upload_images/2392382-0676a8e2a12e2a0b.png)
 
 ##### 红黑树的插入
-先查找, 再插入, ==默认插入红节点(因为红节点不会影响性质5, 可以减少自平衡的操作)==
+先查找, 再插入, ==默认插入红节点(因为红节点不会影响性质4, 可以减少自平衡的操作)==
 ![](https://upload-images.jianshu.io/upload_images/2392382-fa2b78271263d2c8.png)
 
 1. 插入节点为根节点

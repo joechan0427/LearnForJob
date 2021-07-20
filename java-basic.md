@@ -38,7 +38,7 @@ System.out.println(m == n); // true
 基本类型对应的缓冲池如下：
 
 - boolean values true and false
-- all byte values (0 ~ 256) (8 bits)
+- all byte values (-128 ~ 127) (8 bits)
 - short values between (-128 ~ 127) (8 bits)
 - int values between (-128 ~ 127) (8 bits)
 - char in the range (\u0000 ~ \u007F) (8 bits)
@@ -124,7 +124,7 @@ public String(String original) {
 ## float 与 double
 
 java 不能隐式向下转型
-字面量 12.13 是double类型, 不能直接赋值给 float, 12,13f 才是 float 类型
+字面量 12.13 是double类型, 不能直接赋值给 float, 12.13f 才是 float 类型
 
 ==例外==
 ```java
@@ -309,17 +309,19 @@ protected 用于修饰成员，表示在继承体系中成员对于子类可见�
 接口的成员（字段 + 方法）默认都是 public 的，并且不允许定义为 private 或者 protected。从 Java 9 开始，允许将方法定义为 private，这样就能定义某些复用的代码又不会把方法暴露出去。
 
 ==接口的字段默认都是 static 和 final 的。==
+static: 同一个类实现多个接口时, 即使接口的字段重名也不要紧
+final:接口可被多个类实现, 因此防止修改
 
 ## super
 
 - 访问父类的构造函数：可以使用 super() 函数访问父类的构造函数，从而委托父类完成一些初始化的工作。应该注意到，==子类一定会调用父类的构造函数来完成初始化工作==，一般是调用父类的默认构造函数，如果子类需要调用父类其它构造函数，那么就可以使用 super() 函数。
+==这就是为什么推荐编写默认无参构造函数, 否则子类没有显式调用父类构造函数报错==
 - 访问父类的成员方法：如果子类重写了父类的某个方法，可以通过使用 super 关键字来引用父类的方法实现。
 
 ## 重写与重载
-### 1. 重写 (Override)
+### 1. 重写 (Override) (运行时确定)
 
 存在于继承体系中，指子类实现了一个与父类(接口)在方法声明上完全相同的一个方法。
-举一个例子Human man = new Man() ; Human称为静态类型，Man称为实际类型，静态类型在编译器可知，实际类型变化的结果在运行期确定。重载方法的选择取决于参数的静态类型而不是实际类型作为判定依据，由于静态类型在编译器可知，在==编译阶段==就决定使用哪个重载版本到字节码中
 
 为了满足里式替换原则，重写有以下三个限制：
 1. 访问权限大于等于父类
@@ -395,9 +397,11 @@ public static void main(String[] args) {
 }
 ```
 
-### 2. 重载 (Overload)
+### 2. 重载 (Overload) (编译时确定)
 
 存在于同一个类中，指一个方法与已经存在的方法名称上相同，但是==参数类型、个数、顺序==至少有一个不同。
+
+举一个例子Human man = new Man() ; Human称为静态类型，Man称为实际类型，静态类型在编译器可知，实际类型变化的结果在运行期确定。重载方法的选择取决于参数的静态类型而不是实际类型作为判定依据，由于静态类型在编译器可知，在==编译阶段==就决定使用哪个重载版本到字节码中
 
 应该注意的是，返回值不同，其它都相同不算是重载。
 比如:
@@ -423,6 +427,113 @@ Class 和 java.lang.reflect 一起对反射提供了支持，java.lang.reflect �
 - Field ：可以使用 get() 和 set() 方法读取和修改 Field 对象关联的字段；
 - Method ：可以使用 invoke() 方法调用与 Method 对象关联的方法；
 - Constructor ：可以用 Constructor 的 newInstance() 创建新的对象。
+
+# 代理模式
+## 静态代理
+![](https://pic4.zhimg.com/80/v2-999fe11e39afbce5f084d5bfb658b847_720w.jpg)
+
+```java
+public interface Subject   
+{   
+  public void doSomething();   
+}
+public class RealSubject implements Subject   
+{   
+  public void doSomething()   
+  {   
+    System.out.println( "call doSomething()" );   
+  }   
+}
+public class SubjectProxy implements Subject
+{
+  Subject subimpl = new RealSubject();
+  public void doSomething()
+  {
+     subimpl.doSomething();
+  }
+}
+public class TestProxy 
+{
+   public static void main(String args[])
+   {
+       Subject sub = new SubjectProxy();
+       sub.doSomething();
+   }
+}
+```
+**优点:**
+可以在不修改目标类的情况下, 扩展目标类的功能
+**缺点:**
+1. 冗余, 如果有多个类, 每个类都必须手动编写代理类
+2. 不易维护. 如果接口增加方法, 那么目标类和代理类都必须修改
+
+## 动态代理
+> **反射:** 是可以在运行时期动态获取任何类的信息,如属性和方法. 
+**目的:** 不写代理类，而直接得到代理Class对象，然后根据它创建代理实例
+
+JDK提供了java.lang.reflect.InvocationHandler接口和 java.lang.reflect.Proxy类，这两个类相互配合，入口是Proxy
+Proxy有个静态方法：getProxyClass(ClassLoader, interfaces)，只要你给它传入类加载器和一组接口，它就给你返回代理Class对象(接口本身没有构造器)
+![](https://pic1.zhimg.com/80/v2-d187a82b1eb9c088fe60327828ee63aa_1440w.jpg?source=1940ef5c)
+![](https://pic2.zhimg.com/80/v2-28223a1c03c1800052a5dfe4e6cb8c53_1440w.jpg?source=1940ef5c)
+<center>静态代理</center>
+
+![](https://pic1.zhimg.com/80/v2-ba3d9206f341be466f18afbdd938a3b3_1440w.jpg?source=1940ef5c)
+<center>动态代理</center>
+
+Proxy.getProxyClass()这个方法的本质就是：==以Class造Class==
+
+```java
+public class ProxyTest {
+	public static void main(String[] args) throws Throwable {
+		CalculatorImpl target = new CalculatorImpl();
+		Calculator calculatorProxy = (Calculator) getProxy(target);
+		calculatorProxy.add(1, 2);
+		calculatorProxy.subtract(2, 1);
+	}
+
+	private static Object getProxy(final Object target) throws Exception {
+		Object proxy = Proxy.newProxyInstance(
+				target.getClass().getClassLoader(),/*类加载器*/
+				target.getClass().getInterfaces(),/*让代理对象和目标对象实现相同接口*/
+				new InvocationHandler(){/*代理对象的方法最终都会被JVM导向它的invoke方法*/
+					public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+						System.out.println(method.getName() + "方法开始执行...");
+						Object result = method.invoke(target, args);
+						System.out.println(result);
+						System.out.println(method.getName() + "方法执行结束...");
+						return result;
+					}
+				}
+		);
+		return proxy;
+	}
+}
+```
+
+![](https://pic2.zhimg.com/80/v2-6aacbe1e9df4fe982a68fe142401952e_1440w.jpg?source=1940ef5c)
+
+### 动态代理人话
+因为静态代理需要手动为每个类编写代理类, 当类一多时是灾难的
+因此寻求一种不需要为每个类编写代理类的方法, 即动态代理
+
+jdk 的实现是反射, 允许我们在运行时, 动态获取类的构造器, 接口, 类加载器, 并将其作为参数传入 Proxy 类的静态方法里, Proxy 类就会给我们一个代理类, 这个代理类同时也实现了我们传入的接口. 因此相当于在 java 运行期去创造一个类, 做了编译时期做的工作, 这也是反射慢的一个原因
+
+
+### JDK 动态代理和 CGLIB 动态代理的区别
+- JDK是基于反射机制,==生成一个实现代理接口的匿名类==,然后重写方法,实现方法的增强.
+它生成类的速度很快,但是运行时因为是基于反射,调用后续的类操作会很慢.
+而且他是只能针对接口编程的.
+- CGLIB是基于继承机制,继承被代理类,所以方法不要声明为final,然后重写父类方法达到增强了类的作用.
+它底层是基于asm第三方框架,是对代理对象类的class文件加载进来,通过修改其字节码生成子类来处理.
+生成类的速度慢,但是后续执行类的操作时候很快.
+可以针对类和接口(不能针对 final 类).==如果目标类的方法是final的话，就会直接调用目标类的方法==
+
+#### 反射为什么慢
+1. 接口的通用性，java 的invoke 方法 是传object, 和object[] 数组的。
+也就是如果是简单类型的话，在接口处必须封装成object
+2. 在调用的时候，产生了额外的不必要的内存浪费，当调用次数达到一定量的时候，最终还导致了GC。
+3. method.invoke中要进行方法可见性检查
+4. **涉及动态解析类型(传入的都是 Object), jvm 无法对这部分代码进行优化**
 
 # 八. 异常
 
@@ -480,7 +591,7 @@ public static void main(String[] args) {
 错误信息:
 ![](https://user-gold-cdn.xitu.io/2019/8/17/16c9df5681ee06f4?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-所以，对于不确定或者不关心实际要操作的类型，可以使用无限制通配符（尖括号里一个问号，即 <?> ），表示可以持有任何类型。像 countLegs 方法中，限定了上届，但是不关心具体类型是什么，所以对于传入的 Animal 的所有子类都可以支持，并且不会报错。而 countLegs1 就不行。
+所以，对于不确定或者不关心实际要操作的类型，可以使用无限制通配符（尖括号里一个问号，即 <?> ），表示可以持有任何类型。像 countLegs 方法中，限定了上界，但是不关心具体类型是什么，所以对于传入的 Animal 的所有子类都可以支持，并且不会报错。而 countLegs1 就不行。
 
 ## ？ 和 T 的区别
 
@@ -527,7 +638,7 @@ T extends A
 
 ## List 和 List&lt;Object&gt;的区别
 
-1. List属于原始类型，它不会进行安全类型检查，也不存在泛型类型的限制g。
+1. List属于原始类型，它不会进行安全类型检查，也不存在泛型类型的限制。
 2. List&lt;Object&gt;泛型为Object，它会进行安全类型检查，而且受泛型的限制。
 
 # 注解
