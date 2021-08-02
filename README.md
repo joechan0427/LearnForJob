@@ -54,3 +54,7 @@
 docker 与虚拟机
 [docker 与 k8s](https://www.jianshu.com/p/2de643caefc1)
 [腾讯k8s](https://zhuanlan.zhihu.com/p/292081941)
+
+## 容器
+~~hashmap rehash 时如何 get~~
+~~1000 个io线程~~
