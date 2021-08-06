@@ -1,4 +1,6 @@
 # OSI (open system interconnection reference model) 七层协议
+[参考](https://blog.csdn.net/taotongning/article/details/81352985)
+
 1. 物理层
 发送电信号 0101
 2. 数据链路层
@@ -6,9 +8,10 @@
 3. 网络层
 为了找到不同局域网的机器, 提供了 ip 地址, 并提供 ==ARP (Address Resolution Protocol)== 将 ip 地址解析为 mac 地址. 如果要找到跨局域网的机器, 则本计算机通过子网掩码判断出对方 ip 不在同个局域网, 因此将数据先发送给网关
 4. 传输层
-找到了对方的机器, 此时为进程提供通信服务, 因为有多个端口. 该层有 TCP 和 UDP 两种协议
+找到了对方的机器, 此时为进程提供通信服务, 因为有多个端口. 该层有 TCP 和 UDP 两种协议. 功能: 建立端口到端口的通信
 5. 应用层
 http, dns
+功能：规定应用程序的数据格式
 
 ## 交换机路由器区别
 - 工作层次不同：
